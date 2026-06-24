@@ -1,0 +1,106 @@
+[project]
+name = "web-scraper-service"
+version = "0.1.0"
+description = "Production-grade web scraping service with Scrapling, FastAPI, and async scheduling"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+
+    # Scraping engine
+    "scrapling[all]>=0.4.9",
+
+    # Async HTTP
+    "httpx>=0.28.0",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+
+    # Redis
+    "redis[hiredis]>=5.2.0",
+
+    # Scheduling
+    "apscheduler>=4.0.0a5",
+    "celery[redis]>=5.4.0",
+    "flower>=2.0.0",
+
+    # Data validation
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+
+    # Anti-detection
+    "fake-useragent>=2.0.0",
+    "tenacity>=9.0.0",
+
+    # Captcha solving
+    "2captcha-python>=1.5.0",
+
+    # Image processing
+    "pillow>=11.0.0",
+
+    # Object storage
+    "boto3>=1.35.0",
+    "aioboto3>=13.0.0",
+
+    # Logging
+    "loguru>=0.7.0",
+
+    # API utilities
+    "slowapi>=0.1.9",
+    "python-multipart>=0.0.18",
+
+    # URL dedup
+    "pybloom-live>=4.0.0",
+]
+
+[project.optional-dependencies]
+mysql = ["aiomysql>=0.2.0"]
+mongo = ["motor>=3.6.0"]
+es = ["elasticsearch[async]>=8.16.0"]
+all-db = [
+    "web-scraper-service[mysql,mongo,es]",
+]
+
+[project.scripts]
+scraper-api = "web_scraper_service.main:run_api"
+scraper-worker = "web_scraper_service.scheduler.engine:run_worker"
+scraper-beat = "web_scraper_service.scheduler.engine:run_beat"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/web_scraper_service"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "httpx>=0.28.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
