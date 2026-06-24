@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     twocaptcha_api_key: str = ""
     anticaptcha_api_key: str = ""
 
+    # ── Snapshot DB (独立库，存爬取快照) ──────────────────
+    snapshot_database_url: str = (
+        f"postgresql+asyncpg://{postgres_user}:{postgres_password}"
+        f"@{postgres_host}:{postgres_port}/zbd_crawler_data"
+    )
+
     # ── S3 ─────────────────────────────────────────────────
     s3_enabled: bool = False
     s3_endpoint_url: str = ""
