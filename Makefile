@@ -45,3 +45,6 @@ flower:
 
 seed:
 	uv run python scripts/seed_spiders.py
+
+crawl-nfra:
+	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id $(or ${NFRA_ITEM_ID},4110)
