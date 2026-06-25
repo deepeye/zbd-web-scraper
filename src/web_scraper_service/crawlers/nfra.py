@@ -13,10 +13,10 @@ from typing import Any
 
 from loguru import logger
 
+from web_scraper_service.crawlers.nfra_extractor import extract_rows_llm
+from web_scraper_service.storage.djg_data import DjgDataRepo, init_djg_table
 from web_scraper_service.storage.snapshot import (
-    SnapshotRepo,
     SnapshotSession,
-    init_table,
 )
 
 BASE = "https://www.nfra.gov.cn"
@@ -206,44 +206,91 @@ async def fetch_snapshots(
     return [r for r in results if r is not None]
 
 
+async def _fetch_detail_rows(
+    session: Any,
+    doc_id: int,
+    doc_url: str,
+    download_delay: float,
+) -> list[dict[str, Any]]:
+    """打开详情 HTML，LLM 抽取，返回 djg_data 行列表。"""
+    try:
+        resp = await session.fetch(doc_url, network_idle=True, timeout=60000)
+        body = resp.body
+        html = (
+            body.decode("utf-8", errors="replace")
+            if isinstance(body, bytes)
+            else str(body)
+        )
+        rows = await extract_rows_llm(doc_id, html, doc_url)
+        return rows
+    except Exception as exc:
+        logger.error("详情 doc_id={} 抽取失败: {}", doc_id, exc)
+        return []
+    finally:
+        if download_delay > 0:
+            await asyncio.sleep(download_delay)
+
+
 async def run_crawl(
     item_id: int = 4110,
     pages: int = 5,
-    concurrency: int = 5,
-    download_delay: float = 0.5,
+    concurrency: int = 2,
+    download_delay: float = 1.0,
 ) -> dict[str, Any]:
-    """完整编排：列表发现 → 过滤 → 详情抓取 → 写入。"""
-    from scrapling.fetchers import AsyncStealthySession
+    """完整编排：列表发现 → 标题过滤 → 跳过已存在 → 详情抽取 → 写 djg_data。"""
+    from scrapling.fetchers import AsyncDynamicSession, AsyncStealthySession
 
-    await init_table()
+    await init_djg_table()
 
-    # 阶段 1：列表发现
+    # 阶段 1：列表发现（含标题）
     async with AsyncStealthySession(headless=True) as session:
-        doc_ids = await discover_doc_ids(session, item_id, pages)
-    logger.info("共发现 {} 个 docId", len(doc_ids))
-    if not doc_ids:
-        return {"discovered": 0, "pending": 0, "stored": 0}
+        rows = await discover_doc_rows(session, item_id, pages)
+    logger.info("共发现 {} 条文档", len(rows))
+    if not rows:
+        return {"discovered": 0, "pending": 0, "extracted_rows": 0, "stored": 0}
 
-    # 阶段 2：过滤已存在
+    # 阶段 2：标题过滤（仅任职资格类）
+    qualified = [r for r in rows if "任职资格" in r["docTitle"]]
+    logger.info("标题含「任职资格」 {} 条", len(qualified))
+    if not qualified:
+        return {"discovered": len(rows), "pending": 0, "extracted_rows": 0, "stored": 0}
+
+    # 阶段 3：跳过已存在
+    pending_ids = [r["docId"] for r in qualified]
     async with SnapshotSession() as db:
-        repo = SnapshotRepo(db)
-        existing = await repo.existing_doc_ids(set(doc_ids))
-    pending = filter_pending(doc_ids, existing)
+        repo = DjgDataRepo(db)
+        existing = await repo.existing_doc_ids(set(pending_ids))
+    pending = [r for r in qualified if r["docId"] not in existing]
     logger.info("待抓取 {} 个（已存在 {} 个）", len(pending), len(existing))
     if not pending:
-        return {"discovered": len(doc_ids), "pending": 0, "stored": 0}
+        return {"discovered": len(rows), "pending": 0, "extracted_rows": 0, "stored": 0}
 
-    # 阶段 3：详情抓取
-    snapshots = await fetch_snapshots(pending, concurrency, download_delay)
-    logger.info("成功抓取 {} / {} 个详情", len(snapshots), len(pending))
+    # 阶段 4：详情抽取（DynamicSession 持久浏览器 + LLM）
+    sem = asyncio.Semaphore(concurrency)
+    all_rows: list[dict[str, Any]] = []
 
-    # 阶段 4：写入
+    async def _guarded(r: dict[str, Any]) -> list[dict[str, Any]]:
+        async with sem:
+            return await _fetch_detail_rows(
+                session, r["docId"], build_detail_html_url(r["docId"]), download_delay
+            )
+
+    async with AsyncDynamicSession(headless=True) as session:
+        results = await asyncio.gather(*(_guarded(r) for r in pending))
+    for batch in results:
+        all_rows.extend(batch)
+    logger.info("抽取行数 {} （来自 {} 个 doc）", len(all_rows), len(pending))
+
+    # 阶段 5：写入 djg_data
+    if not all_rows:
+        return {"discovered": len(rows), "pending": len(pending), "extracted_rows": 0, "stored": 0}
     async with SnapshotSession() as db:
-        repo = SnapshotRepo(db)
-        stored = await repo.insert_many(snapshots)
-    logger.info("写入 web_snapshot {} 行", stored)
+        repo = DjgDataRepo(db)
+        stored = await repo.insert_many(all_rows)
+    logger.info("写入 djg_data {} 行", stored)
     return {
-        "discovered": len(doc_ids),
+        "discovered": len(rows),
         "pending": len(pending),
+        "extracted_rows": len(all_rows),
         "stored": stored,
     }
