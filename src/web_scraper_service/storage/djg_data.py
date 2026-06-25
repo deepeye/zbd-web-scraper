@@ -13,7 +13,7 @@ from sqlalchemy import BigInteger, DateTime, Text, UniqueConstraint, func, selec
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from web_scraper_service.storage.snapshot import SnapshotSession, snapshot_engine
+from web_scraper_service.storage.snapshot import snapshot_engine
 
 
 class _DjgBase(DeclarativeBase):
