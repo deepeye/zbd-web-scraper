@@ -1,0 +1,94 @@
+services:
+  # ── API Server ─────────────────────────────────────────────
+  scraper-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # ── Celery Worker ──────────────────────────────────────────
+  scraper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A web_scraper_service.scheduler.engine:celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  # ── Celery Beat (Scheduler) ────────────────────────────────
+  scraper-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A web_scraper_service.scheduler.engine:celery_app beat --loglevel=info
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Flower (Celery Monitoring) ─────────────────────────────
+  scraper-flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A web_scraper_service.scheduler.engine:celery_app flower --port=${FLOWER_PORT:-5555}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scraper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scraper_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-scraper_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scraper}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
