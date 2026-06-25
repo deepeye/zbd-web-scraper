@@ -66,6 +66,23 @@ def clean_task(self: Any, job_id: str, spider_name: str) -> dict[str, Any]:
         raise self.retry(exc=exc)
 
 
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
+def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
+    """Celery task to run the nfra crawler (writes to zbd_crawler_data.djg_data)."""
+    from web_scraper_service.crawlers.nfra import run_crawl
+
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            stats = loop.run_until_complete(run_crawl(item_id=item_id, pages=pages))
+        finally:
+            loop.close()
+        return stats
+    except Exception as exc:
+        logger.error("nfra crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        raise self.retry(exc=exc)
+
+
 # ── Beat schedule (populated from DB on startup) ────────────
 
 celery_app.conf.beat_schedule: dict[str, Any] = {}
@@ -152,6 +169,40 @@ async def list_scheduled_jobs() -> list[dict[str, Any]]:
         }
         for j in jobs
     ]
+
+
+async def init_nfra_schedule() -> None:
+    """Register the daily nfra crawl (4110 + 4291) with APScheduler."""
+    if not settings.nfra_schedule_enabled:
+        logger.info("nfra schedule disabled (nfra_schedule_enabled=false)")
+        return
+    if not _scheduler:
+        logger.warning("APScheduler not initialized, nfra schedule skipped")
+        return
+    from apscheduler.triggers.cron import CronTrigger
+
+    trigger = CronTrigger.from_crontab(
+        settings.nfra_schedule_cron, timezone="Asia/Shanghai"
+    )
+    pages = settings.nfra_schedule_pages
+
+    def _run_nfra() -> None:
+        for iid in (4110, 4291):
+            nfra_crawl_task.delay(iid, pages)
+            logger.info("Dispatched nfra crawl: item_id={} pages={}", iid, pages)
+
+    _scheduler.add_job(
+        _run_nfra,
+        trigger=trigger,
+        id="nfra:daily",
+        name="nfra daily crawl (4110+4291)",
+        replace_existing=True,
+    )
+    logger.info(
+        "Scheduled nfra daily crawl: cron='{}' pages={}",
+        settings.nfra_schedule_cron,
+        pages,
+    )
 
 
 # ── Entry points for CLI ───────────────────────────────────
