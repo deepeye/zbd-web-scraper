@@ -21,9 +21,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="采集 nfra.gov.cn 文档快照")
     parser.add_argument("--pages", type=int, default=5, help="采集最新页数（默认 5）")
     parser.add_argument("--item-id", type=int, default=4110, help="栏目 itemId（默认 4110）")
-    parser.add_argument("--concurrency", type=int, default=5, help="详情并发数（默认 5）")
     parser.add_argument(
-        "--download-delay", type=float, default=0.5, help="详情请求间隔秒（默认 0.5）"
+        "--concurrency", type=int, default=2, help="详情并发数（默认 2，浏览器+LLM）"
+    )
+    parser.add_argument(
+        "--download-delay", type=float, default=1.0, help="详情请求间隔秒（默认 1.0）"
     )
     return parser.parse_args()
 
