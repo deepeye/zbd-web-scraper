@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -107,3 +108,50 @@ def test_get_status_success(client: TestClient, _api_key: str) -> None:
     data = resp.json()["data"]
     assert data["status"] == "success"
     assert data["result"]["stored"] == 6
+
+
+@pytest.mark.asyncio
+async def test_init_nfra_schedule_registers_both_itemids(monkeypatch: pytest.MonkeyPatch) -> None:
+    from web_scraper_service.scheduler import engine
+
+    monkeypatch.setattr(engine.settings, "nfra_schedule_enabled", True)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_cron", "0 8 * * *")
+    monkeypatch.setattr(engine.settings, "nfra_schedule_pages", 5)
+
+    sched = MagicMock()
+    added: list[dict[str, Any]] = []
+
+    def fake_add_job(func, *, trigger, id, name, replace_existing):  # noqa: A002
+        added.append({"id": id, "name": name, "trigger": trigger})
+        func()  # simulate scheduler firing the job so dispatch is observable
+        return MagicMock(id=id)
+
+    sched.add_job = fake_add_job
+    monkeypatch.setattr(engine, "_scheduler", sched)
+
+    dispatched: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        engine.nfra_crawl_task,
+        "delay",
+        lambda iid, pages: dispatched.append((iid, pages)),
+    )
+
+    await engine.init_nfra_schedule()
+
+    assert len(added) == 1
+    assert added[0]["id"] == "nfra:daily"
+    # APScheduler CronTrigger stores fields in _fields (0=minute, 1=hour).
+    # Use str() for robustness across APScheduler versions.
+    assert "8" in str(added[0]["trigger"])  # hour=8
+    assert dispatched == [(4110, 5), (4291, 5)]
+
+
+@pytest.mark.asyncio
+async def test_init_nfra_schedule_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    from web_scraper_service.scheduler import engine
+
+    monkeypatch.setattr(engine.settings, "nfra_schedule_enabled", False)
+    sched = MagicMock()
+    monkeypatch.setattr(engine, "_scheduler", sched)
+    await engine.init_nfra_schedule()
+    sched.add_job.assert_not_called()

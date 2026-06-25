@@ -16,7 +16,11 @@ from web_scraper_service.config import settings
 from web_scraper_service.core.exceptions import AppError
 from web_scraper_service.core.logging import setup_logging
 from web_scraper_service.fetchers.proxy import init_proxies
-from web_scraper_service.scheduler.engine import close_scheduler, init_scheduler
+from web_scraper_service.scheduler.engine import (
+    close_scheduler,
+    init_nfra_schedule,
+    init_scheduler,
+)
 from web_scraper_service.storage.database import close_db, init_db
 from web_scraper_service.storage.redis import close_redis, init_redis
 
@@ -31,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_redis()
     init_proxies()
     await init_scheduler()
+    await init_nfra_schedule()
 
     # Import example spiders to register them
     import web_scraper_service.spiders.examples.static_spider  # noqa: F401
