@@ -104,6 +104,11 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/zbd_crawler_data"
         )
 
+    # ── Bailian (Qwen LLM 抽取，OpenAI 兼容) ────────────────
+    dashscope_api_key: str = ""
+    bailian_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    bailian_model: str = "qwen3.5-35b-a3b"
+
     # ── S3 ─────────────────────────────────────────────────
     s3_enabled: bool = False
     s3_endpoint_url: str = ""

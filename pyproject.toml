@@ -48,6 +48,9 @@ dependencies = [
     "boto3>=1.35.0",
     "aioboto3>=13.0.0",
 
+    # LLM extraction (Bailian / Qwen, OpenAI-compatible)
+    "openai>=1.50",
+
     # Logging
     "loguru>=0.7.0",
 
