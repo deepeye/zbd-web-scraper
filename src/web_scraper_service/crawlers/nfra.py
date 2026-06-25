@@ -33,6 +33,10 @@ def build_detail_url(doc_id: int) -> str:
     return f"{BASE}/cn/static/data/DocInfo/SelectByDocId/data_docId={doc_id}.json"
 
 
+def build_detail_html_url(doc_id: int) -> str:
+    return f"{BASE}/cn/view/pages/ItemDetail.html?docId={doc_id}&itemId=4111&generaltype=0"
+
+
 def build_list_html_url(item_id: int) -> str:
     return (
         f"{BASE}/cn/view/pages/ItemList.html?itemPId=923&itemId={item_id}"
@@ -60,6 +64,53 @@ def parse_doc_ids(body: str | bytes) -> list[int]:
         if isinstance(doc_id, int):
             ids.append(doc_id)
     return ids
+
+
+def parse_doc_rows(body: str | bytes) -> list[dict[str, Any]]:
+    """解析列表接口响应，返回 [{'docId': int, 'docTitle': str}, ...]。"""
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="replace")
+        except Exception:
+            return []
+    try:
+        payload: dict[str, Any] = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return []
+    if payload.get("rptCode") != 200:
+        return []
+    rows = (payload.get("data") or {}).get("rows") or []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        doc_id = row.get("docId")
+        if isinstance(doc_id, int):
+            out.append({"docId": doc_id, "docTitle": str(row.get("docTitle") or "")})
+    return out
+
+
+async def discover_doc_rows(
+    session: Any,
+    item_id: int,
+    pages: int,
+) -> list[dict[str, Any]]:
+    """用浏览器持久会话遍历列表 API，返回含标题的行。"""
+    rows: list[dict[str, Any]] = []
+    await session.fetch(build_list_html_url(item_id))
+    for page in range(1, pages + 1):
+        url = build_list_url(item_id, page)
+        try:
+            resp = await session.fetch(url, extra_headers=_LIST_HEADERS)
+            page_rows = parse_doc_rows(resp.body)
+        except Exception as exc:
+            logger.warning("列表第 {} 页抓取失败: {}", page, exc)
+            break
+        if not page_rows:
+            logger.info("列表第 {} 页无数据，停止翻页", page)
+            break
+        rows.extend(page_rows)
+        logger.info("列表第 {} 页获得 {} 条，累计 {}", page, len(page_rows), len(rows))
+        await asyncio.sleep(0.5)
+    return rows
 
 
 def filter_pending(doc_ids: list[int], existing: set[int]) -> list[int]:
