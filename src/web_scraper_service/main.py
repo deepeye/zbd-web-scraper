@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from web_scraper_service.api.middleware import add_middlewares
-from web_scraper_service.api.v1 import jobs, metrics, results, spiders
+from web_scraper_service.api.v1 import jobs, metrics, nfra, results, spiders
 from web_scraper_service.config import settings
 from web_scraper_service.core.exceptions import AppError
 from web_scraper_service.core.logging import setup_logging
@@ -63,6 +63,7 @@ add_middlewares(app)
 app.include_router(spiders.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(results.router, prefix="/api/v1")
+app.include_router(nfra.router, prefix="/api/v1")
 app.include_router(metrics.router, prefix="/api/v1")
 
 

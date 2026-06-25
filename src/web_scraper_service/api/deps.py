@@ -44,7 +44,7 @@ ItemRepoD = Annotated[ItemRepo, Depends(get_item_repo)]
 MetricsRepoD = Annotated[MetricsRepo, Depends(get_metrics_repo)]
 
 
-async def verify_api_key(x_api_key: Annotated[str, Header()]) -> str:
+async def verify_api_key(x_api_key: Annotated[str | None, Header()] = None) -> str:
     if not settings.api_key:
         raise HTTPException(status_code=500, detail="API key not configured — set API_KEY env var")
     if x_api_key != settings.api_key:
