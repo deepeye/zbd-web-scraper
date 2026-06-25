@@ -1,0 +1,57 @@
+# 仅含 PostgreSQL + Redis 的轻量 compose，用于本地手动启动数据库做 smoke 验证。
+# 用法:
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml down        # 停止（保留数据）
+#   docker compose -f docker-compose.dev.yml down -v     # 停止并清除数据
+#
+# 连接信息（与 .env.example 默认值一致）:
+#   PostgreSQL: host=localhost port=5432 user=scraper password=scraper_secret
+#   Redis:      host=localhost port=6379
+#
+# 库说明:
+#   scraper_db       应用主库（postgres 镜像首启自动创建，POSTGRES_DB 指定）
+#   zbd_crawler_data 快照库（web_snapshot 表所在库，需手动创建，见下方命令）
+#
+# 注: postgres 镜像首启只创建 POSTGRES_DB 指定的单一库。zbd_crawler_data 需额外创建:
+#       psql -h localhost -U scraper -d postgres -c "CREATE DATABASE zbd_crawler_data;"
+#     或通过 docker:
+#       docker compose -f docker-compose.dev.yml exec postgres psql -U scraper -d postgres -c "CREATE DATABASE zbd_crawler_data;"
+#     web_snapshot 表由爬虫首次运行时自动 CREATE TABLE IF NOT EXISTS，无需手动建表。
+#     连接快照库查看数据:
+#       psql -h localhost -U scraper -d zbd_crawler_data -c "SELECT doc_id, length(snapshot), crawl_time FROM web_snapshot LIMIT 5;"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-scraper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-scraper_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-scraper_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scraper}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

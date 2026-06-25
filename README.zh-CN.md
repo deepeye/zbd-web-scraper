@@ -41,6 +41,41 @@ make beat
 
 API 文档地址：http://localhost:8000/docs
 
+## 本地数据库（仅 PostgreSQL + Redis）
+
+如只需启动数据库做本地开发或 smoke 验证，可用轻量 compose（不含 API/worker 等服务）：
+
+```bash
+docker compose -f docker-compose.dev.yml up -d       # 启动
+docker compose -f docker-compose.dev.yml down        # 停止（保留数据）
+docker compose -f docker-compose.dev.yml down -v     # 停止并清空数据
+```
+
+连接信息（与 `.env.example` 默认值一致）：
+
+| 项 | 值 |
+|----|----|
+| PostgreSQL | `localhost:5432`，用户 `scraper` / 密码 `scraper_secret` |
+| Redis | `localhost:6379` |
+
+库说明：
+
+| 库名 | 用途 |
+|------|------|
+| `scraper_db` | 应用主库（postgres 镜像首启自动创建） |
+| `zbd_crawler_data` | 快照库，`web_snapshot(doc_id, snapshot, crawl_time)` 表所在库 |
+
+> **注意**：postgres 镜像首启只创建 `POSTGRES_DB` 指定的 `scraper_db`。`zbd_crawler_data` 需手动创建：
+> ```bash
+> psql -h localhost -U scraper -d postgres -c "CREATE DATABASE zbd_crawler_data;"
+> ```
+> `web_snapshot` 表由爬虫首次运行时自动 `CREATE TABLE IF NOT EXISTS`，无需手动建表。
+>
+> 快照数据**在 `zbd_crawler_data` 库**，不在 `scraper_db`：
+> ```bash
+> psql -h localhost -U scraper -d zbd_crawler_data -c "SELECT doc_id, length(snapshot), crawl_time FROM web_snapshot LIMIT 5;"
+> ```
+
 ## Docker Compose
 
 ```bash

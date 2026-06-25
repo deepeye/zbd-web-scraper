@@ -41,6 +41,41 @@ make beat
 
 API docs available at http://localhost:8000/docs
 
+## Local Database (PostgreSQL + Redis only)
+
+For local dev or smoke testing when you only need the databases (not API/worker services), use the lightweight compose:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d       # start
+docker compose -f docker-compose.dev.yml down        # stop (keep data)
+docker compose -f docker-compose.dev.yml down -v     # stop & wipe data
+```
+
+Connection info (matches `.env.example` defaults):
+
+| Item | Value |
+|------|-------|
+| PostgreSQL | `localhost:5432`, user `scraper` / password `scraper_secret` |
+| Redis | `localhost:6379` |
+
+Databases:
+
+| Database | Purpose |
+|----------|---------|
+| `scraper_db` | App main DB (auto-created on first postgres start) |
+| `zbd_crawler_data` | Snapshot DB — holds the `web_snapshot(doc_id, snapshot, crawl_time)` table |
+
+> **Note:** postgres only auto-creates `scraper_db` (the `POSTGRES_DB`). `zbd_crawler_data` must be created manually:
+> ```bash
+> psql -h localhost -U scraper -d postgres -c "CREATE DATABASE zbd_crawler_data;"
+> ```
+> The `web_snapshot` table is auto-created (`CREATE TABLE IF NOT EXISTS`) on the crawler's first run.
+>
+> Snapshot data lives in `zbd_crawler_data`, **not** `scraper_db`:
+> ```bash
+> psql -h localhost -U scraper -d zbd_crawler_data -c "SELECT doc_id, length(snapshot), crawl_time FROM web_snapshot LIMIT 5;"
+> ```
+
 ## Docker Compose
 
 ```bash
