@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     bailian_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     bailian_model: str = "qwen3.5-35b-a3b"
 
+    # ── nfra 定时调度 ───────────────────────────────────────
+    nfra_schedule_enabled: bool = True
+    nfra_schedule_cron: str = "0 8 * * *"
+    nfra_schedule_pages: int = 5
+
     # ── S3 ─────────────────────────────────────────────────
     s3_enabled: bool = False
     s3_endpoint_url: str = ""
