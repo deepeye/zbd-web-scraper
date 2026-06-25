@@ -76,6 +76,28 @@ docker compose -f docker-compose.dev.yml down -v     # 停止并清空数据
 > psql -h localhost -U scraper -d zbd_crawler_data -c "SELECT doc_id, length(snapshot), crawl_time FROM web_snapshot LIMIT 5;"
 > ```
 
+## nfra 文档采集
+
+采集国家金融监督管理总局（nfra.gov.cn）任职资格批复，写入 `zbd_crawler_data.djg_data`：
+
+| itemId | 栏目 | make target |
+|--------|------|-------------|
+| 4110 | 总局机关 | `make crawl-nfra` |
+| 4291 | 第二入口 | `make crawl-nfra-4291` |
+
+```bash
+# 默认 itemId=4110
+make crawl-nfra
+
+# itemId=4291
+make crawl-nfra-4291
+
+# 通过环境变量自定义 itemId / 页数
+NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
+```
+
+详情页用浏览器（DynamicFetcher）打开，字段经百炼 LLM（`qwen3.5-35b-a3b`）抽取；需在 `.env` 配置 `DASHSCOPE_API_KEY`。重复运行会跳过已存在的 doc_id。
+
 ## Docker Compose
 
 ```bash

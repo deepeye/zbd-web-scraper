@@ -76,6 +76,28 @@ Databases:
 > psql -h localhost -U scraper -d zbd_crawler_data -c "SELECT doc_id, length(snapshot), crawl_time FROM web_snapshot LIMIT 5;"
 > ```
 
+## nfra Document Crawling
+
+Crawl 国家金融监督管理总局 (nfra.gov.cn) 任职资格批复 into `zbd_crawler_data.djg_data`:
+
+| itemId | 栏目 | make target |
+|--------|------|-------------|
+| 4110 | 总局机关 | `make crawl-nfra` |
+| 4291 | (second entry) | `make crawl-nfra-4291` |
+
+```bash
+# default: itemId=4110
+make crawl-nfra
+
+# itemId=4291
+make crawl-nfra-4291
+
+# custom itemId / pages via env
+NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
+```
+
+Detail pages are opened with a browser (DynamicFetcher) and fields extracted via Bailian LLM (`qwen3.5-35b-a3b`); requires `DASHSCOPE_API_KEY` in `.env`. Results skip already-stored doc_ids on rerun.
+
 ## Docker Compose
 
 ```bash

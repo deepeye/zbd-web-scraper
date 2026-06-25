@@ -48,3 +48,6 @@ seed:
 
 crawl-nfra:
 	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id $(or ${NFRA_ITEM_ID},4110)
+
+crawl-nfra-4291:
+	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id 4291
