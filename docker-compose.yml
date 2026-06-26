@@ -15,13 +15,18 @@ services:
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── Celery Worker ──────────────────────────────────────────
   scraper-worker:
     build:
       context: .
       dockerfile: Dockerfile
-    command: celery -A web_scraper_service.scheduler.engine:celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-4}
+    command: celery -A web_scraper_service.scheduler.engine:celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
     env_file: .env
     depends_on:
       redis:
@@ -69,6 +74,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-scraper}"]
       interval: 5s
