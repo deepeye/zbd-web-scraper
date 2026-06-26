@@ -265,32 +265,31 @@ async def run_crawl(
     if not pending:
         return {"discovered": len(rows), "pending": 0, "extracted_rows": 0, "stored": 0}
 
-    # 阶段 4：详情抽取（DynamicSession 持久浏览器 + LLM）
+    # 阶段 4+5：详情抽取并逐 doc 写入（边抽边写，崩溃只丢当前未完成 doc）
     sem = asyncio.Semaphore(concurrency)
-    all_rows: list[dict[str, Any]] = []
 
-    async def _guarded(r: dict[str, Any]) -> list[dict[str, Any]]:
+    async def _guarded(r: dict[str, Any]) -> tuple[int, int]:
+        """抽一个 doc 的行，立即写入 djg_data；返回 (extracted, stored)。"""
         async with sem:
-            return await _fetch_detail_rows(
+            batch = await _fetch_detail_rows(
                 session, r["docId"], build_detail_html_url(r["docId"]), download_delay
             )
+        if not batch:
+            return 0, 0
+        async with SnapshotSession() as db:
+            repo = DjgDataRepo(db)
+            stored = await repo.insert_many(batch)
+        logger.info("doc_id={} 抽取 {} 行，写入 {} 行", r["docId"], len(batch), stored)
+        return len(batch), stored
 
     async with AsyncDynamicSession(headless=True) as session:
         results = await asyncio.gather(*(_guarded(r) for r in pending))
-    for batch in results:
-        all_rows.extend(batch)
-    logger.info("抽取行数 {} （来自 {} 个 doc）", len(all_rows), len(pending))
-
-    # 阶段 5：写入 djg_data
-    if not all_rows:
-        return {"discovered": len(rows), "pending": len(pending), "extracted_rows": 0, "stored": 0}
-    async with SnapshotSession() as db:
-        repo = DjgDataRepo(db)
-        stored = await repo.insert_many(all_rows)
-    logger.info("写入 djg_data {} 行", stored)
+    extracted_rows = sum(r[0] for r in results)
+    stored = sum(r[1] for r in results)
+    logger.info("抽取行数 {}，写入 djg_data {} 行", extracted_rows, stored)
     return {
         "discovered": len(rows),
         "pending": len(pending),
-        "extracted_rows": len(all_rows),
+        "extracted_rows": extracted_rows,
         "stored": stored,
     }
