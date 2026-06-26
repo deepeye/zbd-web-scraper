@@ -68,15 +68,48 @@ def clean_task(self: Any, job_id: str, spider_name: str) -> dict[str, Any]:
 
 @celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
 def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
-    """Celery task to run the nfra crawler (writes to zbd_crawler_data.djg_data)."""
-    from web_scraper_service.crawlers.nfra import run_crawl
+    """Run the nfra crawler in a subprocess (isolated event loop per crawl).
 
+    Uses subprocess to avoid asyncio loop-binding issues with module-level
+    async engines (snapshot_engine) across per-task loops in the Celery worker.
+    The subprocess runs scripts/crawl_nfra.py --json-out; the last stdout line
+    is a JSON stats dict.
+    """
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    cmd = [
+        sys.executable,
+        str(repo_root / "scripts" / "crawl_nfra.py"),
+        "--item-id", str(item_id),
+        "--pages", str(pages),
+        "--json-out",
+    ]
     try:
-        loop = asyncio.new_event_loop()
-        try:
-            stats = loop.run_until_complete(run_crawl(item_id=item_id, pages=pages))
-        finally:
-            loop.close()
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=3600,
+        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "")[-2000:]
+            raise RuntimeError(f"crawl_nfra.py exited {proc.returncode}: {tail[-500:]}")
+        # 最后一行 stdout 是 JSON 统计
+        stats: dict[str, Any] = {}
+        for line in reversed(proc.stdout.splitlines()):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    stats = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        logger.info("nfra crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
         return stats
     except Exception as exc:
         logger.error("nfra crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)

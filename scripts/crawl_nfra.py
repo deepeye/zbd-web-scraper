@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 
 from loguru import logger
@@ -26,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--download-delay", type=float, default=1.0, help="详情请求间隔秒（默认 1.0）"
+    )
+    parser.add_argument(
+        "--json-out",
+        action="store_true",
+        help="采集完成后向 stdout 打印单行 JSON 统计（供 Celery 子进程任务解析）",
     )
     return parser.parse_args()
 
@@ -46,6 +52,9 @@ def main() -> int:
         )
     )
     logger.info("采集完成: {}", stats)
+    if args.json_out:
+        # 单行 JSON，供父进程解析；必须是 stdout 最后一行
+        print(json.dumps(stats, ensure_ascii=False), flush=True)
     return 0
 
 
