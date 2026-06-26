@@ -1,0 +1,16 @@
+.venv/
+.git/
+tests/
+docs/
+logs/
+.superpowers/
+.claude/
+.spec-workflow/
+.env
+.env.old
+__pycache__/
+*.pyc
+.mypy_cache/
+.pytest_cache/
+docker-compose.dev.yml
+uv.lock.bak
