@@ -26,7 +26,7 @@ dependencies = [
     "redis[hiredis]>=5.2.0",
 
     # Scheduling
-    "apscheduler>=4.0.0a5",
+    "apscheduler>=3.10,<4",
     "celery[redis]>=5.4.0",
     "flower>=2.0.0",
 
