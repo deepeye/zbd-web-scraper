@@ -215,12 +215,9 @@ async def _fetch_detail_rows(
     """打开详情 HTML，LLM 抽取，返回 djg_data 行列表。"""
     try:
         resp = await session.fetch(doc_url, network_idle=True, timeout=60000)
-        body = resp.body
-        html = (
-            body.decode("utf-8", errors="replace")
-            if isinstance(body, bytes)
-            else str(body)
-        )
+        # 用渲染后 DOM（html_content），非原始响应体 body——抽取器选择器针对渲染 DOM 设计。
+        # body 是 angular 模板壳子，分局文档的 doc_number 仅在渲染后正文/绑定元素中可见。
+        html = resp.html_content or ""
         rows = await extract_rows_llm(doc_id, html, doc_url)
         return rows
     except Exception as exc:
