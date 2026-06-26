@@ -78,7 +78,7 @@ docker compose -f docker-compose.dev.yml down -v     # 停止并清空数据
 
 ## nfra 文档采集
 
-采集国家金融监督管理总局（nfra.gov.cn）任职资格批复，写入 `zbd_crawler_data.djg_data`：
+采集国家金融监督管理总局（nfra.gov.cn）任职资格批复，写入 `zbd_crawler_data.djg_data`（一人一行）：
 
 | itemId | 栏目 | make target |
 |--------|------|-------------|
@@ -96,7 +96,13 @@ make crawl-nfra-4291
 NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
 ```
 
-详情页用浏览器（DynamicFetcher）打开，字段经百炼 LLM（`qwen3.5-35b-a3b`）抽取；需在 `.env` 配置 `DASHSCOPE_API_KEY`。重复运行会跳过已存在的 doc_id。
+**流程**：浏览器（AsyncStealthySession）发现列表（列表 API 需 JS 生成的会话 cookie）→ 标题过滤（含「任职资格」）→ 跳过已入库 doc_id → DynamicFetcher 打开详情 HTML → 混合抽取（meta 用代码选择器、人/职务/机构/日期用百炼 LLM `qwen3.5-35b-a3b`）→ 每个文档抽完即写入 `djg_data`（崩溃安全）。需在 `.env` 配置 `DASHSCOPE_API_KEY`。
+
+**定时调度**：每日 8 点（Asia/Shanghai）APScheduler 自动采集 4110 + 4291 各 5 页；`NFRA_SCHEDULE_ENABLED=false` 关闭。手动触发与状态查询见 [nfra API](#nfra)。
+
+**查询**：`GET /api/v1/nfra/data` 按 `crawl_time` 范围分页查询 `djg_data`。
+
+> 完整接口说明：[`docs/API.md`](docs/API.md)
 
 ## Docker Compose
 
@@ -218,6 +224,16 @@ fetch → parse → validate（Pydantic）→ clean → dedup → store
 | GET | `/api/v1/metrics` | 指标列表 |
 | GET | `/api/v1/metrics/summary/{spider_name}` | 爬虫汇总 |
 
+### nfra
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/nfra/crawl` | 手动触发：`{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
+| GET | `/api/v1/nfra/crawl/{job_id}` | 轮询任务状态（pending/running/success/failed） |
+| GET | `/api/v1/nfra/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
+
+> 各接口参数、请求体、响应示例、错误码详见 [`docs/API.md`](docs/API.md)
+
 ### 响应格式
 
 ```json
@@ -248,6 +264,12 @@ fetch → parse → validate（Pydantic）→ clean → dedup → store
 - `CAPTCHA_ENABLED=false` — 启用验证码求解（2captcha / Anti-Captcha）
 - `DEFAULT_CONCURRENCY=5` — 每个爬虫的最大并发请求数
 - `DEFAULT_DOWNLOAD_DELAY=0.5` — 请求间隔（秒）
+- `SNAPSHOT_DATABASE_URL` — 快照库（默认同 postgres 的 `zbd_crawler_data`）
+- `DASHSCOPE_API_KEY` — 百炼（Qwen）API key，nfra LLM 抽取用
+- `BAILIAN_MODEL=qwen3.5-35b-a3b` — 抽取用的 LLM 模型
+- `NFRA_SCHEDULE_ENABLED=true` — 每日 8 点自动采集开关
+- `NFRA_SCHEDULE_CRON=0 8 * * *` — nfra 定时（Asia/Shanghai）
+- `NFRA_SCHEDULE_PAGES=5` — 定时运行每个 itemId 的页数
 
 ## 许可证
 

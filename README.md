@@ -78,7 +78,7 @@ Databases:
 
 ## nfra Document Crawling
 
-Crawl 国家金融监督管理总局 (nfra.gov.cn) 任职资格批复 into `zbd_crawler_data.djg_data`:
+Crawl 国家金融监督管理总局 (nfra.gov.cn) 任职资格批复 into `zbd_crawler_data.djg_data` (one row per person).
 
 | itemId | 栏目 | make target |
 |--------|------|-------------|
@@ -96,7 +96,13 @@ make crawl-nfra-4291
 NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
 ```
 
-Detail pages are opened with a browser (DynamicFetcher) and fields extracted via Bailian LLM (`qwen3.5-35b-a3b`); requires `DASHSCOPE_API_KEY` in `.env`. Results skip already-stored doc_ids on rerun.
+**Flow**: list discovery via browser (AsyncStealthySession — list API is JS-cookie-gated) → title filter ("任职资格") → skip already-stored doc_ids → open each detail HTML with DynamicFetcher → hybrid extraction (code selectors for meta + Bailian LLM `qwen3.5-35b-a3b` for person/position/institution/date) → write `djg_data` per-doc as each is extracted (crash-safe). Requires `DASHSCOPE_API_KEY` in `.env`.
+
+**Scheduling**: daily 8am (Asia/Shanghai) APScheduler auto-crawls both itemId 4110 + 4291, 5 pages each. Disable via `NFRA_SCHEDULE_ENABLED=false`. Manual trigger + status via API (see [nfra API](#nfra)).
+
+**Query**: `GET /api/v1/nfra/data` returns `djg_data` by `crawl_time` range with pagination.
+
+> Full API detail: [`docs/API.md`](docs/API.md).
 
 ## Docker Compose
 
@@ -218,6 +224,16 @@ All endpoints require `X-API-Key` header.
 | GET | `/api/v1/metrics` | List metrics |
 | GET | `/api/v1/metrics/summary/{spider_name}` | Spider summary |
 
+### nfra
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/v1/nfra/crawl` | Manual trigger: `{item_id?, pages?}` (defaults 4110/5), returns `job_id` |
+| GET | `/api/v1/nfra/crawl/{job_id}` | Poll Celery job status (pending/running/success/failed) |
+| GET | `/api/v1/nfra/data` | Query `djg_data` by `crawl_time` range, paginated |
+
+> Per-endpoint params, request bodies, response examples, error codes: [`docs/API.md`](docs/API.md)
+
 ### Response format
 
 ```json
@@ -248,6 +264,12 @@ Key settings:
 - `CAPTCHA_ENABLED=false` — Enable captcha solving (2captcha / Anti-Captcha)
 - `DEFAULT_CONCURRENCY=5` — Max concurrent requests per spider
 - `DEFAULT_DOWNLOAD_DELAY=0.5` — Delay between requests (seconds)
+- `SNAPSHOT_DATABASE_URL` — Snapshot DB (defaults to `zbd_crawler_data` on same postgres)
+- `DASHSCOPE_API_KEY` — Bailian (Qwen) API key for nfra LLM extraction
+- `BAILIAN_MODEL=qwen3.5-35b-a3b` — LLM model for extraction
+- `NFRA_SCHEDULE_ENABLED=true` — daily 8am auto-crawl toggle
+- `NFRA_SCHEDULE_CRON=0 8 * * *` — nfra daily schedule (Asia/Shanghai)
+- `NFRA_SCHEDULE_PAGES=5` — pages per itemId in scheduled run
 
 ## License
 

@@ -25,13 +25,17 @@ src/web_scraper_service/
 │   └── metrics.py       # 爬取指标收集
 ├── api/                 # RESTful API 层
 │   ├── middleware.py    # 请求ID/耗时/CORS
-│   ├── deps.py          # FastAPI 依赖注入（DB/仓库/认证/分页）
+│   ├── deps.py          # FastAPI 依赖注入（DB/仓库/认证/分页/快照库 session）
 │   ├── response.py      # 统一响应格式
 │   └── v1/              # API v1 路由
 │       ├── spiders.py   # 爬虫 CRUD + run/pause/resume
 │       ├── jobs.py      # 任务查询与取消
 │       ├── results.py   # 结果查询与导出
-│       └── metrics.py   # 指标查询
+│       ├── metrics.py   # 指标查询
+│       └── nfra.py      # nfra 手动触发/状态/数据查询
+├── crawlers/            # 独立采集器（不走 BaseSpider 框架）
+│   ├── nfra.py          # nfra 编排：列表发现→过滤→详情抽取→写 djg_data
+│   └── nfra_extractor.py # 代码侧选择器 + 百炼 LLM 抽取
 ├── spiders/             # 爬虫框架
 │   ├── base.py          # BaseSpider 抽象基类
 │   ├── registry.py      # 爬虫注册表（装饰器自动注册）
@@ -45,14 +49,16 @@ src/web_scraper_service/
 │   ├── cleaners.py      # 数据清洗链
 │   └── dedup.py         # Redis Bloom Filter URL 去重
 ├── scheduler/           # 调度引擎
-│   ├── engine.py        # Celery app + APScheduler 封装
+│   ├── engine.py        # Celery app + APScheduler + nfra_crawl_task + init_nfra_schedule
 │   ├── jobs.py          # 任务分发逻辑
 │   └── triggers.py      # Cron/Interval 触发器解析
 └── storage/             # 数据持久化
-    ├── database.py      # SQLAlchemy 2.x async session
+    ├── database.py      # SQLAlchemy 2.x async session（主库 scraper_db）
     ├── redis.py         # Redis 连接管理
     ├── models.py        # ORM 模型（Spider/Job/Item/Metrics）
-    └── repositories.py  # 仓库模式数据访问
+    ├── repositories.py  # 仓库模式数据访问
+    ├── snapshot.py      # 独立库 zbd_crawler_data：web_snapshot 快照表
+    └── djg_data.py      # 独立库 zbd_crawler_data：djg_data 结构化抽取表
 ```
 
 ---
@@ -142,11 +148,22 @@ ITEM_MODELS["my_spider"] = MyItem
 | GET | `/api/v1/jobs/{id}` | 详情（含成功/失败/去重计数） |
 | POST | `/api/v1/jobs/{id}/cancel` | 取消 pending/running 任务 |
 
+**nfra 采集：**（独立于 spider 注册表，写 `zbd_crawler_data.djg_data`）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/v1/nfra/crawl` | 手动触发 `{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
+| GET | `/api/v1/nfra/crawl/{job_id}` | 轮询 Celery 任务状态 |
+| GET | `/api/v1/nfra/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
+
+> 完整接口字段/示例见 `docs/API.md`。
+
 ### 4. 调度接口
 
 双调度系统：
-- **APScheduler**（in-process）：负责从 DB 加载 cron 表达式并触发 Celery task
-- **Celery**（分布式）：`crawl_task` 实际执行爬虫，`clean_task` 后处理
+- **APScheduler**（in-process，AsyncIOScheduler）：从 DB 加载 spider cron + 注册 nfra 每日定时
+- **Celery**（分布式）：`crawl_task` 执行 BaseSpider 爬虫；`nfra_crawl_task` 执行 nfra 采集（`run_crawl`）；`clean_task` 后处理
+
+**nfra 定时**：`init_nfra_schedule()` 在 lifespan 启动时注册 cron `0 8 * * *`（Asia/Shanghai），每日 8 点派发 `nfra_crawl_task.delay(4110, pages)` 与 `(4291, pages)`。`NFRA_SCHEDULE_ENABLED=false` 关闭。手动 `POST /api/v1/nfra/crawl` 用 `apply_async(task_id=job_id)` 派发，`GET /crawl/{job_id}` 经 `AsyncResult` 查状态。
 
 调度状态变更流：
 ```
@@ -173,6 +190,10 @@ run spider → 直接 dispatch_crawl → Celery task
 - `content_hash` 用于去重检测（SHA-256）
 - `data` JSONB 存储结构化数据
 
+**独立库 `zbd_crawler_data`（非主库 `scraper_db`）：**
+- `web_snapshot(doc_id, snapshot, crawl_time)` — nfra 详情页原始响应快照（`storage/snapshot.py`）。`doc_id` 主键，`ON CONFLICT DO NOTHING` 跳过。
+- `djg_data(id, doc_id, issue_date, issuing_authority, doc_number, institution_name, person_name, position, doc_title, doc_url, crawl_time)` — nfra 结构化抽取结果（`storage/djg_data.py`）。唯一约束 `(doc_id, person_name)`，一人一行，`ON CONFLICT DO NOTHING` 跳过。两表均经 `SnapshotSession` 访问，`CREATE TABLE IF NOT EXISTS` 自动建表，不走 Alembic。
+
 ---
 
 ## 注意事项
@@ -194,7 +215,7 @@ import web_scraper_service.spiders.examples.spa_spider      # noqa: F401
 
 ### 3. Celery Task 中的事件循环
 
-`crawl_task` 是同步 Celery task，内部通过 `asyncio.new_event_loop()` 运行异步爬虫。**不要在 task 中直接调用 `asyncio.run()`**，避免嵌套事件循环问题。
+`crawl_task` / `nfra_crawl_task` 是同步 Celery task，内部通过 `asyncio.new_event_loop()` 运行异步爬虫。**不要在 task 中直接调用 `asyncio.run()`**，避免嵌套事件循环问题。
 
 ### 4. Redis DB 分配
 
@@ -207,24 +228,40 @@ import web_scraper_service.spiders.examples.spa_spider      # noqa: F401
 
 修改 Redis 配置时注意不要冲突。
 
-### 5. Playwright / Camoufox 依赖
+### 5. Playwright / Camoufox / Scrapling 浏览器依赖
 
-`use_playwright=True` 或 `use_camoufox=True` 会动态 import `StealthyFetcher`。确保部署环境已安装浏览器依赖（`scrapling[all]` 包含 Playwright，Camoufox 需额外配置）。
+`use_playwright=True` 或 `use_camoufox=True` 会动态 import `StealthyFetcher`。nfra 采集器用 `AsyncStealthySession`（列表，patchright chromium）与 `AsyncDynamicSession`（详情，playwright chromium）。**部署须先 `scrapling install` 下载浏览器**（Docker 镜像构建时 baked 进 `$SCRAPLING_HOME`；本地开发手动跑 `scrapling install`）。
 
-### 6. 代理池
+### 6. 独立快照库 zbd_crawler_data
+
+`web_snapshot` 与 `djg_data` 在独立库 `zbd_crawler_data`（非主库 `scraper_db`），经 `SnapshotSession`（`storage/snapshot.py`）访问。postgres 镜像首启只建 `scraper_db`，`zbd_crawler_data` 需手动或经 init-db.sql 创建（见 `docker/init-db.sql`）。`SNAPSHOT_DATABASE_URL` 默认从 postgres 凭据派生。
+
+### 7. nfra 采集器独立于 BaseSpider
+
+`crawlers/nfra.py` 的 `run_crawl` 不走 `BaseSpider`/registry/ItemModel 管道，直接经 Celery `nfra_crawl_task` 执行，写独立 `djg_data` 表。详情抽取用**渲染后 DOM**（`resp.html_content`，非原始 `resp.body`）——选择器针对渲染 DOM 设计。
+
+### 8. APScheduler 版本
+
+`pyproject.toml` 锁 `apscheduler>=3.10,<4`。**不要升到 4.x**：4.x alpha API 与 `engine.py` 用的 3.x API（`apscheduler.schedulers.asyncio.AsyncIOScheduler`、`CronTrigger.from_crontab`）不兼容，升级会致 `init_scheduler` 静默失败、调度全停。
+
+### 9. 百炼 LLM 抽取
+
+nfra 详情字段经百炼 `qwen3.5-35b-a3b`（OpenAI 兼容 API）抽取。需在 `.env` 配 `DASHSCOPE_API_KEY`、`BAILIAN_BASE_URL`、`BAILIAN_MODEL`。抽取规则（prompt + 选择器）固化在 `crawlers/nfra_extractor.py`。
+
+### 10. 代理池
 
 `PROXY_LIST` 支持逗号分隔的 HTTP/SOCKS5 代理列表。`proxy_rotation_strategy` 仅支持 `round-robin` 和 `random`，在 `fetchers/proxy.py` 中实现。
 
-### 7. 配置加载优先级
+### 11. 配置加载优先级
 
 `config.py` 使用 `pydantic-settings`：
 1. 环境变量（大写，支持 `__` 嵌套）
 2. `.env` 文件
 3. 默认值
 
-生产环境务必设置 `API_KEY`，空值时 API 返回 500。
+生产环境务必设置 `API_KEY`，空值时 API 返回 500。`SNAPSHOT_DATABASE_URL` 为 `@property`（空 env 不会覆盖派生默认值）。
 
-### 8. 错误码规范
+### 12. 错误码规范
 
 | 范围 | 类别 | 示例 |
 |------|------|------|
@@ -235,18 +272,23 @@ import web_scraper_service.spiders.examples.spa_spider      # noqa: F401
 
 新增错误码时请继承 `AppError` 并遵循区间约定。
 
-### 9. 开发常用命令
+### 13. 开发常用命令
 
 ```bash
 make install      # uv sync
 make dev          # 启动 API（热重载）
-make worker       # 启动 Celery worker
+make worker       # 启动 Celery worker（执行采集）
 make beat         # 启动 Celery beat
 make test         # pytest + coverage
 make lint         # ruff + mypy
 make migrate      # alembic upgrade head
 make docker-up    # 启动全套基础设施
+make crawl-nfra        # nfra 采集 itemId=4110（默认 5 页）
+make crawl-nfra-4291   # nfra 采集 itemId=4291
+# NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra   # 自定义
 ```
+
+本地数据库（仅 PostgreSQL+Redis）：`docker compose -f docker-compose.dev.yml up -d`。完整接口说明见 `docs/API.md`。
 
 ---
 
