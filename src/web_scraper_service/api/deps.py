@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from web_scraper_service.config import settings
 from web_scraper_service.core.exceptions import SpiderNotFoundError
 from web_scraper_service.storage.database import get_session
+from web_scraper_service.storage.djg_data import DjgDataRepo
 from web_scraper_service.storage.repositories import ItemRepo, JobRepo, MetricsRepo, SpiderRepo
+from web_scraper_service.storage.snapshot import SnapshotSession
 
 
 async def get_db() -> AsyncSession:
@@ -70,3 +72,19 @@ class PaginationParams:
 
 
 Pagination = Annotated[PaginationParams, Depends()]
+
+
+# ── Snapshot DB (独立库 zbd_crawler_data) ──────────────────
+async def get_snapshot_session() -> AsyncSession:
+    async with SnapshotSession() as session:
+        yield session
+
+
+SnapshotSessionD = Annotated[AsyncSession, Depends(get_snapshot_session)]
+
+
+def get_djg_data_repo(session: SnapshotSessionD) -> DjgDataRepo:
+    return DjgDataRepo(session)
+
+
+DjgDataRepoD = Annotated[DjgDataRepo, Depends(get_djg_data_repo)]

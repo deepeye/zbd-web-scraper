@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
 from celery.result import AsyncResult  # type: ignore[import-untyped]
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from web_scraper_service.api.deps import ApiKey
-from web_scraper_service.api.response import ok
+from web_scraper_service.api.deps import ApiKey, DjgDataRepoD, Pagination
+from web_scraper_service.api.response import PaginationMeta, ok
 from web_scraper_service.scheduler.engine import celery_app, nfra_crawl_task
 
 router = APIRouter(prefix="/nfra", tags=["nfra"])
@@ -59,3 +60,39 @@ async def crawl_status(job_id: str, _: ApiKey) -> dict[str, Any]:
     elif state == "FAILURE":
         result = str(async_res.result)
     return ok({"job_id": job_id, "status": status, "result": result})
+
+
+@router.get("/data")
+async def list_data(
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    repo: DjgDataRepoD = None,  # type: ignore[assignment]
+    _: ApiKey = None,  # type: ignore[assignment]
+    pagination: Pagination = None,  # type: ignore[assignment]
+) -> dict[str, Any]:
+    rows = await repo.list_by_crawl_time(
+        start_date=start_date,
+        end_date=end_date,
+        limit=pagination.size,
+        offset=pagination.offset,
+    )
+    total = await repo.count_by_crawl_time(start_date=start_date, end_date=end_date)
+    return ok(
+        [
+            {
+                "id": str(r.id),
+                "doc_id": r.doc_id,
+                "issue_date": r.issue_date,
+                "issuing_authority": r.issuing_authority,
+                "doc_number": r.doc_number,
+                "institution_name": r.institution_name,
+                "person_name": r.person_name,
+                "position": r.position,
+                "doc_title": r.doc_title,
+                "doc_url": r.doc_url,
+                "crawl_time": str(r.crawl_time),
+            }
+            for r in rows
+        ],
+        PaginationMeta(page=pagination.page, size=pagination.size, total=total),
+    )
