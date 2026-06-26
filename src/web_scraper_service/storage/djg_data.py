@@ -57,6 +57,41 @@ class DjgDataRepo:
         result = await self.session.execute(stmt)
         return {row[0] for row in result.all()}
 
+    async def list_by_crawl_time(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> list[DjgData]:
+        """按 crawl_time 范围查询，最新采集在前。"""
+        stmt = select(DjgData)
+        if start_date is not None:
+            stmt = stmt.where(DjgData.crawl_time >= start_date)
+        if end_date is not None:
+            stmt = stmt.where(DjgData.crawl_time <= end_date)
+        stmt = (
+            stmt.order_by(DjgData.crawl_time.desc(), DjgData.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count_by_crawl_time(
+        self,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+    ) -> int:
+        """按 crawl_time 范围计数。"""
+        stmt = select(func.count()).select_from(DjgData)
+        if start_date is not None:
+            stmt = stmt.where(DjgData.crawl_time >= start_date)
+        if end_date is not None:
+            stmt = stmt.where(DjgData.crawl_time <= end_date)
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one())
+
     async def insert_many(self, rows: list[dict[str, Any]]) -> int:
         """批量插入，已存在 (doc_id,person_name) 跳过。返回新增行数。"""
         if not rows:
