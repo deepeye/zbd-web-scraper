@@ -45,15 +45,20 @@ def issuing_authority(title: str) -> str:
 
 
 def doc_number(html: str) -> str:
-    """发文函号：优先 DOM [ng-bind-html*="data.documentNo"]，回退正文开头。"""
+    """发文函号：优先 DOM [ng-bind-html*="data.documentNo"]，回退正文搜索。
+
+    回退时在正文里找所有「XX〔YYYY〕N号」候选，优先含 复/批/监 等批复类字样的
+    前缀（避免抓到《请示》里的引用号），取首个。前缀限 2-3 字避免多抓机构名尾字。
+    """
     m = re.search(r'ng-bind-html="data\.documentNo[^"]*"[^>]*>([^<]*)<', html)
     if m and m.group(1).strip():
         return re.sub(r"\s+", "", m.group(1))
-    # 回退：正文开头形如「苏金复〔2026〕139号」
-    prose = clean_prose(html)
-    norm = re.sub(r"\s+", "", prose)
-    m2 = re.match(r"([一-龥A-Za-z]{1,8}〔\d{4}〕\d+号)", norm)
-    return m2.group(1) if m2 else ""
+    norm = re.sub(r"\s+", "", clean_prose(html))
+    candidates = [str(c) for c in re.findall(r"[一-龥A-Za-z]{2,3}〔\d{4}〕\d+号", norm)]
+    pifu = [c for c in candidates if any(k in c for k in ("复", "批", "监", "通", "准", "核"))]
+    if pifu:
+        return pifu[0]
+    return candidates[0] if candidates else ""
 
 
 def clean_prose(html: str) -> str:
