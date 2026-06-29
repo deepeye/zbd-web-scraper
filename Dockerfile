@@ -28,7 +28,8 @@ ENV PYTHONUNBUFFERED=1
 COPY --from=builder /app/.venv /app/.venv
 COPY src/ src/
 COPY migrations/ migrations/
-COPY alembic.ini scripts/ ./
+COPY alembic.ini ./
+COPY scripts/ scripts/
 
 # 下载浏览器二进制（playwright + patchright chromium），baked 进镜像默认缓存路径
 RUN scrapling install
