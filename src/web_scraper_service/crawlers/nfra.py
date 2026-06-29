@@ -75,7 +75,9 @@ async def discover_doc_rows(
 ) -> list[dict[str, Any]]:
     """用浏览器持久会话遍历列表 API，返回含标题的行。"""
     rows: list[dict[str, Any]] = []
-    await session.fetch(build_list_html_url(item_id))
+    # 列表页是 angular 外壳，子资源（tracker/字体）常迟迟不触发 load 事件，
+    # scrapling 默认 wait_until="load"+30s 必超时；改用 network_idle 与详情页一致。
+    await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=60000)
     for page in range(1, pages + 1):
         url = build_list_url(item_id, page)
         try:
