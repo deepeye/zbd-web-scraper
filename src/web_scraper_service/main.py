@@ -22,6 +22,7 @@ from web_scraper_service.scheduler.engine import (
     init_scheduler,
 )
 from web_scraper_service.storage.database import close_db, init_db
+from web_scraper_service.storage.djg_data import init_djg_table
 from web_scraper_service.storage.redis import close_redis, init_redis
 
 
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting {app} in {env} mode", app=settings.app_name, env=settings.app_env)
 
     await init_db()
+    await init_djg_table()
     await init_redis()
     init_proxies()
     await init_scheduler()
