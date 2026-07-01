@@ -98,7 +98,7 @@ _USER_TEMPLATE = """任务：从下方批复正文中，为每一位被核准任
 抽取字段：
 - person_name：人员姓名（2-4 个汉字，从「核准……的任职资格」句中提取）
 - position：职务（核准其任职资格的岗位，如 董事/独立董事/监事/监事会主席/董事长/行长/副行长/总经理/副总经理 等，取原文措辞）
-- institution_name：被批复的金融机构全称（如「苏州银行股份有限公司」，取正文收件人）
+- institution_name：被批复的金融机构全称（如「农银人寿保险股份有限公司福建分公司」，取「核准……的任职资格」句中、人名（或「等N人」）之后、职务之前的部分）
 - issue_date：发文日期（正文末尾的中文日期，格式 YYYY年M月D日，如 2026年5月14日）
 
 规则：
@@ -110,7 +110,10 @@ _USER_TEMPLATE = """任务：从下方批复正文中，为每一位被核准任
 
 示例输入标题：江苏金融监管局关于张伟等6人苏州银行董事、独立董事任职资格的批复
 示例输入正文：苏金复〔2026〕139号 苏州银行股份有限公司：……一、核准张伟、毛竹春、蒋亮等3人苏州银行股份有限公司董事的任职资格；核准夏平、赵欣、吴杰等3人苏州银行股份有限公司独立董事的任职资格。……2026年5月14日
-示例输出：{{"rows":[{{"person_name":"张伟","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"毛竹春","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"蒋亮","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"夏平","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"赵欣","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"吴杰","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}}]}}"""
+示例输出：{{"rows":[{{"person_name":"张伟","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"毛竹春","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"蒋亮","position":"董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"夏平","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"赵欣","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}},{{"person_name":"吴杰","position":"独立董事","institution_name":"苏州银行股份有限公司","issue_date":"2026年5月14日"}}]}}
+
+单人示例输入正文：一、核准陈冬君农银人寿保险股份有限公司福建分公司总经理的任职资格。
+单人示例输出：{{"rows":[{{"person_name":"陈冬君","position":"总经理","institution_name":"农银人寿保险股份有限公司福建分公司","issue_date":""}}]}}"""
 
 
 def build_user_prompt(title: str, prose: str) -> str:
@@ -136,7 +139,7 @@ def parse_llm_rows(content: str) -> list[dict[str, str]]:
             "person_name": name,
             "position": str(r.get("position", "")).strip(),
             "institution_name": str(r.get("institution_name", "")).strip(),
-            "issue_date": str(r.get("issue_date", "")).strip(),
+            "issue_date": str(r.get("issue_date", "")).strip().replace(" ", ""),
         })
     return out
 
