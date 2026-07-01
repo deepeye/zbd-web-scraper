@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,6 +19,7 @@ from web_scraper_service.crawlers.nfra_extractor import (
     extract_rows_llm,
     issuing_authority,
     parse_llm_rows,
+    publish_date,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -27,6 +29,15 @@ JS_HTML = (FIXTURES / "doc_1258343_jiangsu.html").read_text(encoding="utf-8")
 
 def test_extract_meta() -> None:
     assert extract_meta(MAIN_HTML, "ArticleTitle").startswith("国家金融监督管理总局关于")
+
+
+def test_publish_date_from_rendered_detail_text() -> None:
+    assert publish_date(MAIN_HTML) == date(2026, 5, 8)
+    assert publish_date(JS_HTML) == date(2026, 5, 14)
+
+
+def test_publish_date_missing_returns_none() -> None:
+    assert publish_date("<html><body>无发布时间</body></html>") is None
 
 
 def test_doc_title() -> None:
@@ -125,6 +136,7 @@ async def test_extract_rows_llm_merges_code_and_llm_fields() -> None:
     assert r["doc_title"].startswith("江苏金融监管局关于")
     assert r["issuing_authority"] == "江苏金融监管局"
     assert r["doc_number"] == "苏金复〔2026〕139号"
+    assert r["publish_date"] == date(2026, 5, 14)
     assert r["person_name"] == "张伟"
     assert r["position"] == "董事"
     assert r["doc_url"].startswith("https://www.nfra.gov.cn/")

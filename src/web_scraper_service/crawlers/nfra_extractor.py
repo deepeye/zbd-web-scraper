@@ -10,6 +10,7 @@ from __future__ import annotations
 import html as _html
 import json
 import re
+from datetime import date
 from typing import Any
 
 from loguru import logger
@@ -34,6 +35,14 @@ def extract_meta(html: str, name: str) -> str:
 
 def doc_title(html: str) -> str:
     return extract_meta(html, "ArticleTitle")
+
+
+def publish_date(html: str) -> date | None:
+    match = re.search(r"发布时间\s*[:：]\s*(\d{4})-(\d{2})-(\d{2})", html)
+    if not match:
+        return None
+    year, month, day = (int(part) for part in match.groups())
+    return date(year, month, day)
 
 
 def issuing_authority(title: str) -> str:
@@ -167,6 +176,7 @@ async def extract_rows_llm(doc_id: int, html: str, doc_url: str) -> list[dict[st
         "doc_url": doc_url,
         "doc_number": number,
         "issuing_authority": authority,
+        "publish_date": publish_date(html),
     }
     try:
         content = await _call_llm(title, prose)
