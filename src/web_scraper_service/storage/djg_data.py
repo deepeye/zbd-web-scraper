@@ -6,10 +6,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Text, UniqueConstraint, func, select
+from sqlalchemy import BigInteger, Date, DateTime, Text, UniqueConstraint, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -26,6 +26,7 @@ class DjgData(_DjgBase):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     doc_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    publish_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     issue_date: Mapped[str] = mapped_column(Text, default="")
     issuing_authority: Mapped[str] = mapped_column(Text, default="")
     doc_number: Mapped[str] = mapped_column(Text, default="")
@@ -43,6 +44,7 @@ async def init_djg_table() -> None:
     """CREATE TABLE IF NOT EXISTS djg_data."""
     async with snapshot_engine.begin() as conn:
         await conn.run_sync(_DjgBase.metadata.create_all)
+        await conn.execute(text("ALTER TABLE djg_data ADD COLUMN IF NOT EXISTS publish_date DATE"))
 
 
 class DjgDataRepo:
