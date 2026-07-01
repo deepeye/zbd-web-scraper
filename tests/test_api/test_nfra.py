@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -164,6 +164,7 @@ def _fake_row(
     *,
     id: int = 1,  # noqa: A002
     doc_id: int = 1258343,
+    publish_date: date | None = date(2026, 5, 14),
     person_name: str = "张伟",
     position: str = "董事",
     institution_name: str = "苏州银行股份有限公司",
@@ -177,6 +178,7 @@ def _fake_row(
     r = DjgData()
     r.id = id
     r.doc_id = doc_id
+    r.publish_date = publish_date
     r.person_name = person_name
     r.position = position
     r.institution_name = institution_name
@@ -217,6 +219,7 @@ def test_get_data_with_date_range(
     assert len(rows) == 2
     assert rows[0]["person_name"] == "张伟"
     assert rows[0]["doc_id"] == 1258343
+    assert rows[0]["publish_date"] == "2026-05-14"
     assert "crawl_time" in rows[0]
     assert body["pagination"]["total"] == 2
     assert body["pagination"]["page"] == 1
@@ -225,6 +228,19 @@ def test_get_data_with_date_range(
     args, kwargs = repo.list_by_crawl_time.call_args
     assert kwargs["limit"] == 20
     assert kwargs["offset"] == 0
+
+
+def test_get_data_publish_date_null(client: TestClient, _api_key: str) -> None:
+    repo = MagicMock()
+    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_row(publish_date=None)])
+    repo.count_by_crawl_time = AsyncMock(return_value=1)
+    client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
+    try:
+        resp = client.get("/api/v1/nfra/data", headers={"X-API-Key": _api_key})
+    finally:
+        client.app.dependency_overrides.clear()
+    assert resp.status_code == 200
+    assert resp.json()["data"][0]["publish_date"] is None
 
 
 def test_get_data_empty(client: TestClient, _api_key: str) -> None:

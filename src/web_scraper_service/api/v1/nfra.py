@@ -82,6 +82,7 @@ async def list_data(
             {
                 "id": str(r.id),
                 "doc_id": r.doc_id,
+                "publish_date": r.publish_date.isoformat() if r.publish_date else None,
                 "issue_date": r.issue_date,
                 "issuing_authority": r.issuing_authority,
                 "doc_number": r.doc_number,
