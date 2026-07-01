@@ -40,6 +40,10 @@ def test_publish_date_missing_returns_none() -> None:
     assert publish_date("<html><body>无发布时间</body></html>") is None
 
 
+def test_publish_date_invalid_parts_returns_none() -> None:
+    assert publish_date("<html><body>发布时间：2026-13-40</body></html>") is None
+
+
 def test_doc_title() -> None:
     assert "姜亦峰" in doc_title(MAIN_HTML)
     assert "张伟" in doc_title(JS_HTML)

@@ -42,7 +42,10 @@ def publish_date(html: str) -> date | None:
     if not match:
         return None
     year, month, day = (int(part) for part in match.groups())
-    return date(year, month, day)
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
 
 
 def issuing_authority(title: str) -> str:
