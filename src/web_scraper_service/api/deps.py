@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from web_scraper_service.config import settings
 from web_scraper_service.core.exceptions import SpiderNotFoundError
 from web_scraper_service.storage.database import get_session
+from web_scraper_service.storage.capital_change_data import CapitalChangeDataRepo
 from web_scraper_service.storage.djg_data import DjgDataRepo
 from web_scraper_service.storage.repositories import ItemRepo, JobRepo, MetricsRepo, SpiderRepo
 from web_scraper_service.storage.snapshot import SnapshotSession
@@ -88,3 +89,12 @@ def get_djg_data_repo(session: SnapshotSessionD) -> DjgDataRepo:
 
 
 DjgDataRepoD = Annotated[DjgDataRepo, Depends(get_djg_data_repo)]
+
+
+def get_capital_change_data_repo(session: SnapshotSessionD) -> CapitalChangeDataRepo:
+    return CapitalChangeDataRepo(session)
+
+
+CapitalChangeDataRepoD = Annotated[
+    CapitalChangeDataRepo, Depends(get_capital_change_data_repo)
+]
