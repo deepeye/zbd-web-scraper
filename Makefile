@@ -51,3 +51,9 @@ crawl-nfra:
 
 crawl-nfra-4291:
 	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id 4291
+
+crawl-nfra-capital:
+	uv run python scripts/crawl_nfra_capital.py --pages $(or ${NFRA_PAGES},5) $(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)
+
+crawl-nfra-equity:
+	uv run python scripts/crawl_nfra_equity.py --pages $(or ${NFRA_PAGES},5) $(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)

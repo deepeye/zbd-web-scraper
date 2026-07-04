@@ -24,6 +24,7 @@ from web_scraper_service.scheduler.engine import (
 from web_scraper_service.storage.database import close_db, init_db
 from web_scraper_service.storage.capital_change_data import init_capital_change_table
 from web_scraper_service.storage.djg_data import init_djg_table
+from web_scraper_service.storage.equity_change_data import init_equity_change_table
 from web_scraper_service.storage.redis import close_redis, init_redis
 
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     await init_djg_table()
     await init_capital_change_table()
+    await init_equity_change_table()
     await init_redis()
     init_proxies()
     await init_scheduler()

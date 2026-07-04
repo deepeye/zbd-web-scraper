@@ -116,6 +116,104 @@ def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
         raise self.retry(exc=exc)
 
 
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
+def nfra_capital_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[str, Any]:
+    """Run the nfra capital-change crawler in a subprocess (isolated event loop).
+
+    Subprocess runs scripts/crawl_nfra_capital.py --json-out; the last stdout line
+    is a JSON stats dict. ``item_id`` None → 采集 4110 和 4291。
+    """
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    cmd = [
+        sys.executable,
+        str(repo_root / "scripts" / "crawl_nfra_capital.py"),
+        "--pages",
+        str(pages),
+        "--json-out",
+    ]
+    if item_id is not None:
+        cmd.extend(["--item-id", str(item_id)])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=3600,
+        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "")[-2000:]
+            raise RuntimeError(f"crawl_nfra_capital.py exited {proc.returncode}: {tail[-500:]}")
+        stats: dict[str, Any] = {}
+        for line in reversed(proc.stdout.splitlines()):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    stats = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        logger.info("nfra capital crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
+        return stats
+    except Exception as exc:
+        logger.error("nfra capital crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
+def nfra_equity_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[str, Any]:
+    """Run the nfra equity-change crawler in a subprocess (isolated event loop).
+
+    Subprocess runs scripts/crawl_nfra_equity.py --json-out; the last stdout line
+    is a JSON stats dict. ``item_id`` None → 采集 4110 和 4291。
+    """
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[3]
+    cmd = [
+        sys.executable,
+        str(repo_root / "scripts" / "crawl_nfra_equity.py"),
+        "--pages",
+        str(pages),
+        "--json-out",
+    ]
+    if item_id is not None:
+        cmd.extend(["--item-id", str(item_id)])
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=3600,
+        )
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "")[-2000:]
+            raise RuntimeError(f"crawl_nfra_equity.py exited {proc.returncode}: {tail[-500:]}")
+        stats: dict[str, Any] = {}
+        for line in reversed(proc.stdout.splitlines()):
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                try:
+                    stats = json.loads(line)
+                    break
+                except json.JSONDecodeError:
+                    continue
+        logger.info("nfra equity crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
+        return stats
+    except Exception as exc:
+        logger.error("nfra equity crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        raise self.retry(exc=exc)
+
+
 # ── Beat schedule (populated from DB on startup) ────────────
 
 celery_app.conf.beat_schedule: dict[str, Any] = {}
@@ -223,6 +321,12 @@ async def init_nfra_schedule() -> None:
         for iid in (4110, 4291):
             nfra_crawl_task.delay(iid, pages)
             logger.info("Dispatched nfra crawl: item_id={} pages={}", iid, pages)
+        if settings.nfra_capital_schedule_enabled:
+            nfra_capital_crawl_task.delay(None, pages)
+            logger.info("Dispatched nfra capital crawl: item_id=None pages={}", pages)
+        if settings.nfra_equity_schedule_enabled:
+            nfra_equity_crawl_task.delay(None, pages)
+            logger.info("Dispatched nfra equity crawl: item_id=None pages={}", pages)
 
     _scheduler.add_job(
         _run_nfra,

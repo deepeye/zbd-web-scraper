@@ -26,7 +26,17 @@ async def test_lifespan_ensures_djg_table_on_startup() -> None:
              "web_scraper_service.main.init_djg_table",
              new=AsyncMock(),
              create=True,
-         ) as init_djg:
+         ) as init_djg, \
+         patch(
+             "web_scraper_service.main.init_capital_change_table",
+             new=AsyncMock(),
+             create=True,
+         ), \
+         patch(
+             "web_scraper_service.main.init_equity_change_table",
+             new=AsyncMock(),
+             create=True,
+         ):
         app = FastAPI()
         async with lifespan(app):
             pass

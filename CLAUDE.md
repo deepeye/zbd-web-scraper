@@ -35,7 +35,11 @@ src/web_scraper_service/
 │       └── nfra.py      # nfra 手动触发/状态/数据查询
 ├── crawlers/            # 独立采集器（不走 BaseSpider 框架）
 │   ├── nfra.py          # nfra 编排：列表发现→过滤→详情抽取→写 djg_data
-│   └── nfra_extractor.py # 代码侧选择器 + 百炼 LLM 抽取
+│   ├── nfra_extractor.py # 任职资格：代码侧选择器 + 百炼 LLM 抽取
+│   ├── nfra_capital.py  # 注册资本/开业编排→写 capital_change_data
+│   ├── nfra_capital_extractor.py # 注册资本/开业 LLM 抽取
+│   ├── nfra_equity.py   # 股权变更/开业股东编排→写 equity_change_data
+│   └── nfra_equity_extractor.py  # 股权变更/开业股东 LLM 抽取
 ├── spiders/             # 爬虫框架
 │   ├── base.py          # BaseSpider 抽象基类
 │   ├── registry.py      # 爬虫注册表（装饰器自动注册）
@@ -58,7 +62,9 @@ src/web_scraper_service/
     ├── models.py        # ORM 模型（Spider/Job/Item/Metrics）
     ├── repositories.py  # 仓库模式数据访问
     ├── snapshot.py      # 独立库 zbd_crawler_data：web_snapshot 快照表
-    └── djg_data.py      # 独立库 zbd_crawler_data：djg_data 结构化抽取表
+    ├── djg_data.py      # 独立库 zbd_crawler_data：djg_data 任职资格抽取表
+    ├── capital_change_data.py # 独立库：capital_change_data 注册资本/开业表
+    └── equity_change_data.py  # 独立库：equity_change_data 股权变更/股东表
 ```
 
 ---
@@ -148,12 +154,18 @@ ITEM_MODELS["my_spider"] = MyItem
 | GET | `/api/v1/jobs/{id}` | 详情（含成功/失败/去重计数） |
 | POST | `/api/v1/jobs/{id}/cancel` | 取消 pending/running 任务 |
 
-**nfra 采集：**（独立于 spider 注册表，写 `zbd_crawler_data.djg_data`）
+**nfra 采集：**（独立于 spider 注册表，写 `zbd_crawler_data` 独立库）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/nfra/crawl` | 手动触发 `{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
+| POST | `/api/v1/nfra/crawl` | 任职资格：手动触发 `{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
 | GET | `/api/v1/nfra/crawl/{job_id}` | 轮询 Celery 任务状态 |
 | GET | `/api/v1/nfra/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
+| POST | `/api/v1/nfra/capital/crawl` | 注册资本/开业：手动触发 `{item_id?, pages?}`（item_id 省略→4110+4291） |
+| GET | `/api/v1/nfra/capital/crawl/{job_id}` | 轮询任务状态 |
+| GET | `/api/v1/nfra/capital/data` | 分页查询 `capital_change_data` |
+| POST | `/api/v1/nfra/equity/crawl` | 股权变更/开业股东：手动触发 `{item_id?, pages?}`（item_id 省略→4110+4291） |
+| GET | `/api/v1/nfra/equity/crawl/{job_id}` | 轮询任务状态 |
+| GET | `/api/v1/nfra/equity/data` | 分页查询 `equity_change_data` |
 
 > 完整接口字段/示例见 `docs/API.md`。
 
@@ -163,7 +175,7 @@ ITEM_MODELS["my_spider"] = MyItem
 - **APScheduler**（in-process，AsyncIOScheduler）：从 DB 加载 spider cron + 注册 nfra 每日定时
 - **Celery**（分布式）：`crawl_task` 执行 BaseSpider 爬虫；`nfra_crawl_task` 执行 nfra 采集（`run_crawl`）；`clean_task` 后处理
 
-**nfra 定时**：`init_nfra_schedule()` 在 lifespan 启动时注册 cron `0 8 * * *`（Asia/Shanghai），每日 8 点派发 `nfra_crawl_task.delay(4110, pages)` 与 `(4291, pages)`。`NFRA_SCHEDULE_ENABLED=false` 关闭。手动 `POST /api/v1/nfra/crawl` 用 `apply_async(task_id=job_id)` 派发，`GET /crawl/{job_id}` 经 `AsyncResult` 查状态。
+**nfra 定时**：`init_nfra_schedule()` 在 lifespan 启动时注册 cron `0 8 * * *`（Asia/Shanghai），每日 8 点派发 `nfra_crawl_task.delay(4110, pages)` 与 `(4291, pages)`；`NFRA_CAPITAL_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_capital_crawl_task.delay(None, pages)`，`NFRA_EQUITY_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_equity_crawl_task.delay(None, pages)`（均采集 4110+4291）。`NFRA_SCHEDULE_ENABLED=false` 关闭整个 nfra 定时（含 capital/equity）；`NFRA_CAPITAL_SCHEDULE_ENABLED`/`NFRA_EQUITY_SCHEDULE_ENABLED` 单独控制各类。手动 `POST /api/v1/nfra/crawl` 用 `apply_async(task_id=job_id)` 派发，`GET /crawl/{job_id}` 经 `AsyncResult` 查状态。
 
 调度状态变更流：
 ```
@@ -192,7 +204,9 @@ run spider → 直接 dispatch_crawl → Celery task
 
 **独立库 `zbd_crawler_data`（非主库 `scraper_db`）：**
 - `web_snapshot(doc_id, snapshot, crawl_time)` — nfra 详情页原始响应快照（`storage/snapshot.py`）。`doc_id` 主键，`ON CONFLICT DO NOTHING` 跳过。
-- `djg_data(id, doc_id, issue_date, issuing_authority, doc_number, institution_name, person_name, position, doc_title, doc_url, crawl_time)` — nfra 结构化抽取结果（`storage/djg_data.py`）。唯一约束 `(doc_id, person_name)`，一人一行，`ON CONFLICT DO NOTHING` 跳过。两表均经 `SnapshotSession` 访问，`CREATE TABLE IF NOT EXISTS` 自动建表，不走 Alembic。
+- `djg_data(id, doc_id, issue_date, issuing_authority, doc_number, institution_name, person_name, position, doc_title, doc_url, crawl_time)` — nfra 结构化抽取结果（`storage/djg_data.py`）。唯一约束 `(doc_id, person_name)`，一人一行，`ON CONFLICT DO NOTHING` 跳过。
+- `capital_change_data(...)` — 注册资本/开业抽取（`storage/capital_change_data.py`）。唯一约束 `(doc_id, institution_name, change_type)`，`change_type` 为 `变更注册资本`/`机构成立`，`ON CONFLICT DO NOTHING` 跳过。
+- `equity_change_data(...)` — 股权变更/开业股东抽取（`storage/equity_change_data.py`）。唯一约束 `(doc_id, institution_name, shareholder_name, change_method)`，`change_method` 为 `转入`/`转出`，`ON CONFLICT DO NOTHING` 跳过。四表均经 `SnapshotSession` 访问，`CREATE TABLE IF NOT EXISTS` 自动建表，不走 Alembic。
 
 ---
 
@@ -238,7 +252,7 @@ import web_scraper_service.spiders.examples.spa_spider      # noqa: F401
 
 ### 7. nfra 采集器独立于 BaseSpider
 
-`crawlers/nfra.py` 的 `run_crawl` 不走 `BaseSpider`/registry/ItemModel 管道，直接经 Celery `nfra_crawl_task` 执行，写独立 `djg_data` 表。详情抽取用**渲染后 DOM**（`resp.html_content`，非原始 `resp.body`）——选择器针对渲染 DOM 设计。
+`crawlers/nfra.py` 的 `run_crawl` 不走 `BaseSpider`/registry/ItemModel 管道，直接经 Celery `nfra_crawl_task` 执行，写独立 `djg_data` 表。注册资本/开业（`crawlers/nfra_capital.py` + `nfra_capital_crawl_task`）与股权变更/开业股东（`crawlers/nfra_equity.py` + `nfra_equity_crawl_task`）同理，分别写 `capital_change_data`、`equity_change_data`。三类采集均复用 `discover_doc_rows`/`build_detail_html_url`，详情抽取用**渲染后 DOM**（`resp.html_content`，非原始 `resp.body`）——选择器针对渲染 DOM 设计。
 
 ### 8. APScheduler 版本
 
@@ -285,6 +299,8 @@ make migrate      # alembic upgrade head
 make docker-up    # 启动全套基础设施
 make crawl-nfra        # nfra 采集 itemId=4110（默认 5 页）
 make crawl-nfra-4291   # nfra 采集 itemId=4291
+make crawl-nfra-capital  # 注册资本/开业采集（默认 4110+4291）
+make crawl-nfra-equity   # 股权变更/开业股东采集（默认 4110+4291）
 # NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra   # 自定义
 ```
 

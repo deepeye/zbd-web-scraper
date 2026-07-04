@@ -331,7 +331,7 @@ X-API-Key: <API_KEY>
 
 ## 7. nfra 采集 `/api/v1/nfra`
 
-nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（表 `djg_data`）。手动触发经 Celery 异步执行；定时调度每日 8 点（Asia/Shanghai）由 APScheduler 派发。
+nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（`djg_data`/`capital_change_data`/`equity_change_data`）。手动触发经 Celery 异步执行；定时调度每日 8 点（Asia/Shanghai）由 APScheduler 派发——默认派发任职资格采集（4110+4291）、注册资本/开业采集（`NFRA_CAPITAL_SCHEDULE_ENABLED` 控制，默认开）与股权变更采集（`NFRA_EQUITY_SCHEDULE_ENABLED` 控制，默认开）；`NFRA_SCHEDULE_ENABLED=false` 关闭全部。
 
 > 运行需：API 服务（`make dev`）+ Celery worker（`make worker`）+ Redis + `.env` 配置 `DASHSCOPE_API_KEY`。
 
@@ -455,6 +455,97 @@ curl "http://localhost:8000/api/v1/nfra/data?start_date=2026-06-25T00:00:00&end_
 
 ---
 
+### 7.4 注册资本/开业采集 `/api/v1/nfra/capital/*`
+
+采集 nfra「变更注册资本」与「总公司开业」批复，写入独立库 `zbd_crawler_data.capital_change_data`。手动触发经 Celery 异步执行；`item_id` 省略时同时采集 4110 和 4291。
+
+**手动触发** `POST /api/v1/nfra/capital/crawl`（鉴权：需）
+
+| 字段 | 类型 | 默认 | 约束 | 说明 |
+|------|------|------|------|------|
+| `item_id` | int \| null | null | ≥ 1 或 null | 栏目 itemId；null → 4110+4291 |
+| `pages` | int | 5 | ≥ 1 | 采集最新页数 |
+
+**响应**：`{"data": {"job_id": "<uuid>", "item_id": null, "pages": 5, "status": "pending"}}`
+
+**错误**：`400` `pages < 1` 或 `item_id < 1`；`401` 未认证。
+
+**查询状态** `GET /api/v1/nfra/capital/crawl/{job_id}` — 状态映射同 7.2。`result`（仅 SUCCESS）字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `discovered` | int | 列表发现文档总数 |
+| `qualified` | int | 标题含「注册资本」或「开业」的文档数 |
+| `pending` | int | 未入库的待抓取数 |
+| `extracted_rows` | int | LLM 抽取行数 |
+| `stored` | int | 写入 capital_change_data 行数 |
+
+**查询数据** `GET /api/v1/nfra/capital/data`（鉴权：需　分页：是）— 查询参数同 7.3（`start_date`/`end_date`/`page`/`size`），排序 `crawl_time DESC, id DESC`。
+
+**响应 data**（数组）：
+
+```json
+[{
+  "id": "1", "doc_id": 1234814,
+  "publish_date": "2025-11-20",
+  "issue_date": "2025年11月20日",
+  "issuing_authority": "江苏监管局",
+  "doc_number": "苏金复〔2025〕411号",
+  "change_type": "变更注册资本",
+  "institution_name": "南京银行股份有限公司",
+  "registered_capital_before": "10,007,016,973元",
+  "registered_capital_change_method": "可转债转股",
+  "change_amount": "",
+  "registered_capital_after": "12,363,567,245元",
+  "doc_title": "江苏金融监管局关于南京银行股份有限公司变更注册资本的批复",
+  "doc_url": "https://www.nfra.gov.cn/...",
+  "crawl_time": "2026-07-02 10:00:00+00:00"
+}]
+```
+
+`change_type`：`变更注册资本` 或 `机构成立`。金额保留原文，不做数值归一化。
+
+---
+
+### 7.5 变更股权采集 `/api/v1/nfra/equity/*`
+
+采集 nfra「股权变更」批复与「总公司开业」批复中的股东信息，写入独立库 `zbd_crawler_data.equity_change_data`。结构与 7.4 一致；`item_id` 省略时同时采集 4110 和 4291。
+
+**手动触发** `POST /api/v1/nfra/equity/crawl`（鉴权：需）— 请求体同 7.4（`item_id`/`pages`）。
+
+**查询状态** `GET /api/v1/nfra/equity/crawl/{job_id}` — 状态映射同 7.2；`result` 字段同 7.4。
+
+**查询数据** `GET /api/v1/nfra/equity/data`（鉴权：需　分页：是）— 查询参数同 7.3。
+
+**响应 data**（数组，每位股东一行）：
+
+```json
+[{
+  "id": "1", "doc_id": 1258291,
+  "publish_date": "2026-06-18",
+  "issue_date": "2026年6月18日",
+  "issuing_authority": "重庆监管局",
+  "doc_number": "渝金管复〔2026〕58号",
+  "change_type": "变更股权",
+  "institution_name": "重庆小米消费金融有限公司",
+  "shareholder_name": "小米通讯技术有限公司",
+  "shareholding_before": "",
+  "change_method": "转入",
+  "transferred_shares": "15000股",
+  "transferred_ratio": "",
+  "shares_after": "90000股",
+  "shareholding_after": "0.6",
+  "contribution_amount": "",
+  "doc_title": "重庆金融监管局关于重庆小米消费金融有限公司股权变更的批复",
+  "doc_url": "https://www.nfra.gov.cn/...",
+  "crawl_time": "2026-07-03 10:00:00+00:00"
+}]
+```
+
+`change_type`：`变更股权` 或 `机构成立`（开业批复中的股东）；`change_method`：`转入` 或 `转出`。比例/股份/金额保留原文，不做数值归一化。
+
+---
+
 ## 8. 错误码
 
 业务错误码（`code` 字段）按区间分类：
@@ -526,3 +617,49 @@ HTTP 层错误（`HTTPException`）响应示例：
 | `crawl_time` | timestamptz | 采集时间 |
 
 唯一约束：`(doc_id, person_name)`。
+
+### capital_change_data（独立库 `zbd_crawler_data`）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | bigserial PK | |
+| `doc_id` | bigint | 文档 ID（多行可相同） |
+| `publish_date` | date | 发布日期（可空） |
+| `issue_date` | text | 发文日期 |
+| `issuing_authority` | text | 发文监管机构 |
+| `doc_number` | text | 发文函号 |
+| `change_type` | text | `变更注册资本` / `机构成立` |
+| `institution_name` | text | 机构名称 |
+| `registered_capital_before` | text | 变更前注册资本 |
+| `registered_capital_change_method` | text | 变更方式 |
+| `change_amount` | text | 变更金额 |
+| `registered_capital_after` | text | 变更后注册资本 |
+| `doc_title` / `doc_url` | text | 发文名称 / 链接 |
+| `crawl_time` | timestamptz | 采集时间 |
+
+唯一约束：`(doc_id, institution_name, change_type)`。
+
+### equity_change_data（独立库 `zbd_crawler_data`）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | bigserial PK | |
+| `doc_id` | bigint | 文档 ID（多行可相同） |
+| `publish_date` | date | 发布日期（可空） |
+| `issue_date` | text | 发文日期 |
+| `issuing_authority` | text | 发文监管机构 |
+| `doc_number` | text | 发文函号 |
+| `change_type` | text | `变更股权` / `机构成立` |
+| `institution_name` | text | 机构名称 |
+| `shareholder_name` | text | 股东名称 |
+| `shareholding_before` | text | 变更前持股比例 |
+| `change_method` | text | `转入` / `转出` |
+| `transferred_shares` | text | 受让股份 |
+| `transferred_ratio` | text | 受让比例 |
+| `shares_after` | text | 变更后股份 |
+| `shareholding_after` | text | 变更后持股比例 |
+| `contribution_amount` | text | 出资额 |
+| `doc_title` / `doc_url` | text | 发文名称 / 链接 |
+| `crawl_time` | timestamptz | 采集时间 |
+
+唯一约束：`(doc_id, institution_name, shareholder_name, change_method)`。
