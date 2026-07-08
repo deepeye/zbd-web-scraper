@@ -57,10 +57,12 @@ _USER_TEMPLATE = """任务：从下方批复正文中抽取股东变更或总公
 1. 标题或正文属于股权变更批复时，change_type 写 变更股权。
 2. 标题或正文属于总公司开业批复时，change_type 写 机构成立，抽取各股东及其认购/出资信息。
 3. 开业文章只抽取总公司股东，不抽取分支机构、分公司、支公司、营业部。
-4. 一位股东一行；同一股东既有转入又有转出时，按原文方向各成一行。
-5. 如果文章只涉及任职资格、注册资本变更（无股东信息）或其他无关内容，返回 {{"rows": []}}。
-6. 比例、股份、金额保留原文表达，不做数值归一化。
-7. 严格输出 JSON，schema：{{"rows":[{{"issue_date":"","issuing_authority":"","change_type":"","institution_name":"","shareholder_name":"","shareholding_before":"","change_method":"","transferred_shares":"","transferred_ratio":"","shares_after":"","shareholding_after":"","contribution_amount":""}}]}}。
+4. 一位股东或一组股东一行；同一股东既有转入又有转出时，按原文方向各成一行。
+5. 股权变更必须同时抽取转入方和转出方，两边缺一不可。转入方是受让股权的主体，转出方是出让股权的主体。
+6. 原文「A、B、C合计」「A、B、C等N人」表示一组股东合计持有同一比例，保留原文名称序列不变，合并为一行，不拆开。
+7. 如果文章只涉及任职资格、注册资本变更（无股东信息）或其他无关内容，返回 {{"rows": []}}。
+8. 比例、股份、金额保留原文表达，不做数值归一化。
+9. 严格输出 JSON，schema：{{"rows":[{{"issue_date":"","issuing_authority":"","change_type":"","institution_name":"","shareholder_name":"","shareholding_before":"","change_method":"","transferred_shares":"","transferred_ratio":"","shares_after":"","shareholding_after":"","contribution_amount":""}}]}}。
 """
 
 _FIELDS = (

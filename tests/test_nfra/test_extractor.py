@@ -25,6 +25,7 @@ from web_scraper_service.crawlers.nfra_extractor import (
 FIXTURES = Path(__file__).parent / "fixtures"
 MAIN_HTML = (FIXTURES / "doc_1258731_main.html").read_text(encoding="utf-8")
 JS_HTML = (FIXTURES / "doc_1258343_jiangsu.html").read_text(encoding="utf-8")
+FUZHOU_HTML = (FIXTURES / "doc_1263743_fuzhou.html").read_text(encoding="utf-8")
 
 
 def test_extract_meta() -> None:
@@ -61,6 +62,12 @@ def test_doc_number_dom_path() -> None:
 
 def test_doc_number_prose_fallback() -> None:
     assert doc_number(JS_HTML) == "苏金复〔2026〕139号"
+
+
+def test_doc_number_four_char_prefix() -> None:
+    """分局批复常用 4 字简称（如 抚金监复 = 抚州金融监管分局 复文），
+    限 3 字会截掉首字变成 金监复。"""
+    assert doc_number(FUZHOU_HTML) == "抚金监复〔2026〕47号"
 
 
 def test_doc_number_missing() -> None:
