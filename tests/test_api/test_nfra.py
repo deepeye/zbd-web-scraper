@@ -38,7 +38,7 @@ def test_post_crawl_defaults(client: TestClient, _api_key: str) -> None:
     with patch("web_scraper_service.api.v1.nfra.nfra_crawl_task") as task:
         task.apply_async.return_value = fake
         resp = client.post(
-            "/api/v1/nfra/crawl",
+            "/api/v1/nfra/djg/crawl",
             json={},
             headers={"X-API-Key": _api_key},
         )
@@ -59,7 +59,7 @@ def test_post_crawl_custom(client: TestClient, _api_key: str) -> None:
     with patch("web_scraper_service.api.v1.nfra.nfra_crawl_task") as task:
         task.apply_async.return_value = fake
         resp = client.post(
-            "/api/v1/nfra/crawl",
+            "/api/v1/nfra/djg/crawl",
             json={"item_id": 4291, "pages": 3},
             headers={"X-API-Key": _api_key},
         )
@@ -73,7 +73,7 @@ def test_post_crawl_custom(client: TestClient, _api_key: str) -> None:
 
 def test_post_crawl_invalid_pages(client: TestClient, _api_key: str) -> None:
     resp = client.post(
-        "/api/v1/nfra/crawl",
+        "/api/v1/nfra/djg/crawl",
         json={"pages": 0},
         headers={"X-API-Key": _api_key},
     )
@@ -82,7 +82,7 @@ def test_post_crawl_invalid_pages(client: TestClient, _api_key: str) -> None:
 
 def test_post_crawl_no_api_key(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "api_key", "test-key")
-    resp = client.post("/api/v1/nfra/crawl", json={})
+    resp = client.post("/api/v1/nfra/djg/crawl", json={})
     assert resp.status_code == 401
 
 
@@ -93,7 +93,7 @@ def test_get_status_pending(client: TestClient, _api_key: str) -> None:
         inst.result = None
         ar.return_value = inst
         resp = client.get(
-            "/api/v1/nfra/crawl/job-1",
+            "/api/v1/nfra/djg/crawl/job-1",
             headers={"X-API-Key": _api_key},
         )
     assert resp.status_code == 200
@@ -110,7 +110,7 @@ def test_get_status_success(client: TestClient, _api_key: str) -> None:
         inst.result = {"discovered": 18, "pending": 6, "extracted_rows": 6, "stored": 6}
         ar.return_value = inst
         resp = client.get(
-            "/api/v1/nfra/crawl/job-2",
+            "/api/v1/nfra/djg/crawl/job-2",
             headers={"X-API-Key": _api_key},
         )
     assert resp.status_code == 200
@@ -282,7 +282,7 @@ def test_get_data_with_date_range(
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get(
-            "/api/v1/nfra/data",
+            "/api/v1/nfra/djg/data",
             params={
                 "start_date": "2026-06-25T00:00:00",
                 "end_date": "2026-06-26T00:00:00",
@@ -316,7 +316,7 @@ def test_get_data_publish_date_null(client: TestClient, _api_key: str) -> None:
     repo.count_by_crawl_time = AsyncMock(return_value=1)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
-        resp = client.get("/api/v1/nfra/data", headers={"X-API-Key": _api_key})
+        resp = client.get("/api/v1/nfra/djg/data", headers={"X-API-Key": _api_key})
     finally:
         client.app.dependency_overrides.clear()
     assert resp.status_code == 200
@@ -329,7 +329,7 @@ def test_get_data_empty(client: TestClient, _api_key: str) -> None:
     repo.count_by_crawl_time = AsyncMock(return_value=0)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
-        resp = client.get("/api/v1/nfra/data", headers={"X-API-Key": _api_key})
+        resp = client.get("/api/v1/nfra/djg/data", headers={"X-API-Key": _api_key})
     finally:
         client.app.dependency_overrides.clear()
     assert resp.status_code == 200
@@ -344,7 +344,7 @@ def test_get_data_pagination_offset(client: TestClient, _api_key: str) -> None:
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get(
-            "/api/v1/nfra/data",
+            "/api/v1/nfra/djg/data",
             params={"page": 2, "size": 20},
             headers={"X-API-Key": _api_key},
         )
@@ -357,7 +357,7 @@ def test_get_data_pagination_offset(client: TestClient, _api_key: str) -> None:
 
 def test_get_data_no_api_key(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "api_key", "test-key")
-    resp = client.get("/api/v1/nfra/data")
+    resp = client.get("/api/v1/nfra/djg/data")
     assert resp.status_code == 401
 
 
