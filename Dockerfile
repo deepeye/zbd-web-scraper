@@ -4,9 +4,22 @@ FROM python:3.12-slim AS builder
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
+
+# 先只拷贝依赖声明文件，利用 Docker 层缓存：pyproject.toml/uv.lock
+# 不变时该层及 uv sync 都不会重新执行。
 COPY pyproject.toml uv.lock README.md ./
+
+# 仅安装第三方依赖（不装项目本身），下载的包缓存在 BuildKit cache mount
+# 中，即使层失效重建也不会重复下载。
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# 再拷贝源码（此后层在 src 变更时失效，但依赖已缓存）
 COPY src/ src/
-RUN uv sync --frozen --no-dev
+
+# 安装项目本身（仅链接/复制，无需下载，秒级完成）
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # ── Stage 2: Runtime ────────────────────────────────────────
 FROM python:3.12-slim
