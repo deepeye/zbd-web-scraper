@@ -335,7 +335,7 @@ nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（
 
 > 运行需：API 服务（`make dev`）+ Celery worker（`make worker`）+ Redis + `.env` 配置 `DASHSCOPE_API_KEY`。
 
-### 7.1 手动触发采集 `POST /api/v1/nfra/crawl`
+### 7.1 手动触发采集 `POST /api/v1/nfra/djg/crawl`
 
 异步派发 Celery 任务，立即返回 `job_id`。
 
@@ -365,14 +365,14 @@ nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（
 **示例**
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/nfra/crawl \
+curl -X POST http://localhost:8000/api/v1/nfra/djg/crawl \
   -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
   -d '{"item_id": 4291, "pages": 1}'
 ```
 
 ---
 
-### 7.2 查询任务状态 `GET /api/v1/nfra/crawl/{job_id}`
+### 7.2 查询任务状态 `GET /api/v1/nfra/djg/crawl/{job_id}`
 
 通过 Celery `AsyncResult` 查询手动触发的任务状态。
 
@@ -411,7 +411,7 @@ curl -X POST http://localhost:8000/api/v1/nfra/crawl \
 
 ---
 
-### 7.3 查询采集数据 `GET /api/v1/nfra/data`
+### 7.3 查询采集数据 `GET /api/v1/nfra/djg/data`
 
 按采集时间范围查询 `djg_data` 表，翻页返回。
 
@@ -447,7 +447,7 @@ curl -X POST http://localhost:8000/api/v1/nfra/crawl \
 **示例**
 
 ```bash
-curl "http://localhost:8000/api/v1/nfra/data?start_date=2026-06-25T00:00:00&end_date=2026-06-26T00:00:00&page=1&size=20" \
+curl "http://localhost:8000/api/v1/nfra/djg/data?start_date=2026-06-25T00:00:00&end_date=2026-06-26T00:00:00&page=1&size=20" \
   -H "X-API-Key: $API_KEY"
 ```
 

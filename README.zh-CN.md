@@ -100,7 +100,7 @@ NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
 
 **定时调度**：每日 8 点（Asia/Shanghai）APScheduler 自动采集 4110 + 4291 各 5 页；`NFRA_SCHEDULE_ENABLED=false` 关闭。手动触发与状态查询见 [nfra API](#nfra)。
 
-**查询**：`GET /api/v1/nfra/data` 按 `crawl_time` 范围分页查询 `djg_data`。
+**查询**：`GET /api/v1/nfra/djg/data` 按 `crawl_time` 范围分页查询 `djg_data`。
 
 > 完整接口说明：[`docs/API.md`](docs/API.md)
 
@@ -228,9 +228,9 @@ fetch → parse → validate（Pydantic）→ clean → dedup → store
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/nfra/crawl` | 手动触发：`{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
-| GET | `/api/v1/nfra/crawl/{job_id}` | 轮询任务状态（pending/running/success/failed） |
-| GET | `/api/v1/nfra/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
+| POST | `/api/v1/nfra/djg/crawl` | 手动触发：`{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
+| GET | `/api/v1/nfra/djg/crawl/{job_id}` | 轮询任务状态（pending/running/success/failed） |
+| GET | `/api/v1/nfra/djg/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
 
 > 各接口参数、请求体、响应示例、错误码详见 [`docs/API.md`](docs/API.md)
 

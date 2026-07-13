@@ -100,7 +100,7 @@ NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
 
 **Scheduling**: daily 8am (Asia/Shanghai) APScheduler auto-crawls both itemId 4110 + 4291, 5 pages each. Disable via `NFRA_SCHEDULE_ENABLED=false`. Manual trigger + status via API (see [nfra API](#nfra)).
 
-**Query**: `GET /api/v1/nfra/data` returns `djg_data` by `crawl_time` range with pagination.
+**Query**: `GET /api/v1/nfra/djg/data` returns `djg_data` by `crawl_time` range with pagination.
 
 > Full API detail: [`docs/API.md`](docs/API.md).
 
@@ -228,9 +228,9 @@ All endpoints require `X-API-Key` header.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/nfra/crawl` | Manual trigger: `{item_id?, pages?}` (defaults 4110/5), returns `job_id` |
-| GET | `/api/v1/nfra/crawl/{job_id}` | Poll Celery job status (pending/running/success/failed) |
-| GET | `/api/v1/nfra/data` | Query `djg_data` by `crawl_time` range, paginated |
+| POST | `/api/v1/nfra/djg/crawl` | Manual trigger: `{item_id?, pages?}` (defaults 4110/5), returns `job_id` |
+| GET | `/api/v1/nfra/djg/crawl/{job_id}` | Poll Celery job status (pending/running/success/failed) |
+| GET | `/api/v1/nfra/djg/data` | Query `djg_data` by `crawl_time` range, paginated |
 
 > Per-endpoint params, request bodies, response examples, error codes: [`docs/API.md`](docs/API.md)
 
