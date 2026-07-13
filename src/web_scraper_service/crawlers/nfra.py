@@ -22,8 +22,8 @@ BASE = "https://www.nfra.gov.cn"
 
 def build_list_url(item_id: int, page: int, page_size: int = 18) -> str:
     return (
-        f"{BASE}/cn/static/data/DocInfo/SelectDocByItemIdAndChild/"
-        f"data_itemId={item_id},pageIndex={page},pageSize={page_size}.json"
+        f"{BASE}/cbircweb/DocInfo/SelectDocByItemIdAndChild"
+        f"?itemId={item_id}&pageSize={page_size}&pageIndex={page}"
     )
 
 

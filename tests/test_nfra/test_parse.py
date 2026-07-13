@@ -12,11 +12,12 @@ from web_scraper_service.crawlers.nfra import (
 
 def test_build_list_url() -> None:
     assert build_list_url(4110, 1) == (
-        "https://www.nfra.gov.cn/cn/static/data/DocInfo/"
-        "SelectDocByItemIdAndChild/data_itemId=4110,pageIndex=1,pageSize=18.json"
+        "https://www.nfra.gov.cn/cbircweb/DocInfo/SelectDocByItemIdAndChild"
+        "?itemId=4110&pageSize=18&pageIndex=1"
     )
-    assert build_list_url(4110, 3, page_size=50).endswith(
-        "data_itemId=4110,pageIndex=3,pageSize=50.json"
+    assert build_list_url(4110, 3, page_size=50) == (
+        "https://www.nfra.gov.cn/cbircweb/DocInfo/SelectDocByItemIdAndChild"
+        "?itemId=4110&pageSize=50&pageIndex=3"
     )
 
 
