@@ -38,6 +38,23 @@ def build_list_html_url(item_id: int) -> str:
     )
 
 
+def _response_has_rows(body: str | bytes) -> bool:
+    """检查原始 API 响应是否包含非空 data.rows（不做 docId 类型过滤）。"""
+    if isinstance(body, bytes):
+        try:
+            body = body.decode("utf-8", errors="replace")
+        except Exception:
+            return False
+    try:
+        payload: dict[str, Any] = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if payload.get("rptCode") != 200:
+        return False
+    rows = (payload.get("data") or {}).get("rows")
+    return isinstance(rows, list) and len(rows) > 0
+
+
 def parse_doc_rows(body: str | bytes) -> list[dict[str, Any]]:
     """解析列表接口响应，返回 [{'docId': int, 'docTitle': str}, ...]。"""
     if isinstance(body, bytes):
@@ -57,6 +74,8 @@ def parse_doc_rows(body: str | bytes) -> list[dict[str, Any]]:
         doc_id = row.get("docId")
         if isinstance(doc_id, int):
             out.append({"docId": doc_id, "docTitle": str(row.get("docTitle") or "")})
+        elif isinstance(doc_id, str) and doc_id.isdigit():
+            out.append({"docId": int(doc_id), "docTitle": str(row.get("docTitle") or "")})
     return out
 
 
@@ -77,11 +96,12 @@ async def discover_doc_rows(
         url = build_list_url(item_id, page)
         try:
             resp = await session.fetch(url)
+            raw_has_data = _response_has_rows(resp.body)
             page_rows = parse_doc_rows(resp.body)
         except Exception as exc:
             logger.warning("列表第 {} 页抓取失败: {}", page, exc)
             break
-        if not page_rows:
+        if not raw_has_data:
             logger.info("列表第 {} 页无数据，停止翻页", page)
             break
         rows.extend(page_rows)
