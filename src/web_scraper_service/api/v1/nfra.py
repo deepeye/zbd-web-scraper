@@ -43,7 +43,7 @@ class EquityCrawlRequest(BaseModel):
     pages: int = Field(default=5)
 
 
-@router.post("/crawl")
+@router.post("/djg/crawl")
 async def crawl(body: CrawlRequest, _: ApiKey) -> dict[str, Any]:
     if body.pages < 1:
         raise HTTPException(status_code=400, detail="pages must be >= 1")
@@ -63,7 +63,7 @@ async def crawl(body: CrawlRequest, _: ApiKey) -> dict[str, Any]:
     )
 
 
-@router.get("/crawl/{job_id}")
+@router.get("/djg/crawl/{job_id}")
 async def crawl_status(job_id: str, _: ApiKey) -> dict[str, Any]:
     async_res = AsyncResult(job_id, app=celery_app)
     state = async_res.state or "PENDING"
@@ -247,7 +247,7 @@ async def list_equity_data(
     )
 
 
-@router.get("/data")
+@router.get("/djg/data")
 async def list_data(
     start_date: datetime | None = None,
     end_date: datetime | None = None,
