@@ -62,11 +62,6 @@ def parse_doc_rows(body: str | bytes) -> list[dict[str, Any]]:
 
 # ── 异步编排（网络/浏览器，靠手动 smoke 验收）──────────────
 
-_LIST_HEADERS = {
-    "X-Requested-With": "XMLHttpRequest",
-    "Referer": f"{BASE}/cn/view/pages/ItemList.html",
-}
-
 
 async def discover_doc_rows(
     session: Any,
@@ -81,7 +76,7 @@ async def discover_doc_rows(
     for page in range(1, pages + 1):
         url = build_list_url(item_id, page)
         try:
-            resp = await session.fetch(url, extra_headers=_LIST_HEADERS)
+            resp = await session.fetch(url)
             page_rows = parse_doc_rows(resp.body)
         except Exception as exc:
             logger.warning("列表第 {} 页抓取失败: {}", page, exc)
