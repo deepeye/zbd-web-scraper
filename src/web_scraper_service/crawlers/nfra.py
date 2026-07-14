@@ -104,7 +104,7 @@ async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
 
     kwargs: dict[str, Any] = {"headless": True}
     if proxy:
-        kwargs["proxy"] = proxy
+        kwargs["proxy"] = f"http://{proxy}"
     session = AsyncStealthySession(**kwargs)
     await session.__aenter__()
     try:
