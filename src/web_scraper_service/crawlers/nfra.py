@@ -99,12 +99,37 @@ _ERROR_BACKOFF_BASE = 5.0  # 首次重试等 5s，之后指数退避
 
 
 async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
-    """创建浏览器 session 并导航到列表页，返回已就绪的 session。"""
+    """创建浏览器 session 并导航到列表页，返回已就绪的 session。
+
+    优先使用代理；若代理认证失败则回退到无代理模式。
+    """
+    if proxy:
+        proxy_str = _build_proxy_url(proxy)
+        try:
+            session = await _try_make_session(item_id, proxy_str)
+            logger.info("代理 {} 连接成功", proxy)
+            return session
+        except Exception as exc:
+            logger.warning("代理 {} 连接失败（{}），回退到无代理模式", proxy, exc)
+    return await _try_make_session(item_id, None)
+
+
+def _build_proxy_url(server: str) -> str:
+    """构建带认证的代理 URL。"""
+    from web_scraper_service.config import settings
+
+    if settings.proxy_pool_auth:
+        return f"http://{settings.proxy_pool_auth}@{server}"
+    return f"http://{server}"
+
+
+async def _try_make_session(item_id: int, proxy: str | None) -> Any:
+    """创建 session 并导航到列表页。"""
     from scrapling.fetchers import AsyncStealthySession
 
     kwargs: dict[str, Any] = {"headless": True}
     if proxy:
-        kwargs["proxy"] = f"http://{proxy}"
+        kwargs["proxy"] = proxy
     session = AsyncStealthySession(**kwargs)
     await session.__aenter__()
     try:
