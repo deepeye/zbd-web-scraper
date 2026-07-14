@@ -101,7 +101,7 @@ _ERROR_BACKOFF_BASE = 5.0  # 首次重试等 5s，之后指数退避
 async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
     """创建浏览器 session 并导航到列表页，返回已就绪的 session。
 
-    优先使用代理；若代理认证失败则回退到无代理模式。
+    若指定代理失败，不回退无代理，直接抛出异常由上层重试下一个代理。
     """
     if proxy:
         proxy_str = _build_proxy_url(proxy)
@@ -110,8 +110,39 @@ async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
             logger.info("代理 {} 连接成功", proxy)
             return session
         except Exception as exc:
-            logger.warning("代理 {} 连接失败（{}），回退到无代理模式", proxy, exc)
+            logger.warning("代理 {} 连接失败: {}", proxy, exc)
+            raise
     return await _try_make_session(item_id, None)
+
+
+async def _rebuild_session_with_proxy(
+    item_id: int,
+    pool: Any,
+    current_proxy: str | None,
+) -> tuple[Any, str | None]:
+    """尝试用下一个可用代理重建 session，耗尽所有代理后才回退无代理。"""
+    from web_scraper_service.fetchers.dynamic_proxy import DynamicProxyPool
+
+    next_proxy: str | None = None
+    if pool is not None and current_proxy is not None:
+        pool.mark_failed(current_proxy)
+        # 尝试所有剩余代理
+        for _ in range(pool.available_count + 1):
+            next_proxy = pool.get_next()
+            if next_proxy is None:
+                break
+            try:
+                session = await _make_list_session(item_id, proxy=next_proxy)
+                return session, next_proxy
+            except Exception:
+                if next_proxy:
+                    pool.mark_failed(next_proxy)
+                continue
+
+    # 无可用代理，回退无代理
+    logger.warning("所有代理不可用，回退到无代理模式")
+    session = await _make_list_session(item_id, proxy=None)
+    return session, None
 
 
 def _build_proxy_url(server: str) -> str:
@@ -191,21 +222,22 @@ async def discover_doc_rows(
             if status == _PageStatus.ERROR:
                 consecutive_errors += 1
 
-                # 切换代理
-                if pool is not None and current_proxy is not None:
-                    pool.mark_failed(current_proxy)
-                    current_proxy = pool.get_next()
-
                 if consecutive_errors > _MAX_ERROR_RETRIES:
                     logger.warning("连续 {} 次错误，跳过第 {} 页继续", consecutive_errors, page)
                     consecutive_errors = 0
                     continue
+
                 backoff = _ERROR_BACKOFF_BASE * (2 ** (consecutive_errors - 1))
-                proxy_info = f"代理 {current_proxy}" if current_proxy else "无代理"
-                logger.warning("列表第 {} 页响应异常（{}），{}s 后重建 session 重试", page, proxy_info, backoff)
+                logger.warning("列表第 {} 页响应异常，{}s 后切换代理重试", page, backoff)
                 await asyncio.sleep(backoff)
+
                 await _close_session(session)
-                session = await _make_list_session(item_id, proxy=current_proxy)
+                session, current_proxy = await _rebuild_session_with_proxy(
+                    item_id, pool, current_proxy,
+                )
+                proxy_info = f"代理 {current_proxy}" if current_proxy else "无代理"
+                logger.info("切换到 {}，重试第 {} 页", proxy_info, page)
+
                 # 重试当前页
                 try:
                     resp = await session.fetch(url)
