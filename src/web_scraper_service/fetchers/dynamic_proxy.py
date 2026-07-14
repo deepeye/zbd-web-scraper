@@ -16,7 +16,7 @@ from loguru import logger
 
 from web_scraper_service.config import settings
 
-_REFRESH_INTERVAL = 600  # 10 minutes
+_REFRESH_INTERVAL = 60  # 1 minute
 
 
 class DynamicProxyPool:
