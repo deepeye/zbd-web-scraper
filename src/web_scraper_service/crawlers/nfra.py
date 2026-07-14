@@ -98,11 +98,14 @@ _MAX_ERROR_RETRIES = 3
 _ERROR_BACKOFF_BASE = 5.0  # 首次重试等 5s，之后指数退避
 
 
-async def _make_list_session(item_id: int) -> Any:
+async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
     """创建浏览器 session 并导航到列表页，返回已就绪的 session。"""
     from scrapling.fetchers import AsyncStealthySession
 
-    session = AsyncStealthySession(headless=True)
+    kwargs: dict[str, Any] = {"headless": True}
+    if proxy:
+        kwargs["proxy"] = proxy
+    session = AsyncStealthySession(**kwargs)
     await session.__aenter__()
     try:
         await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=60000)
@@ -126,11 +129,23 @@ async def discover_doc_rows(
 ) -> list[dict[str, Any]]:
     """用浏览器持久会话遍历列表 API，返回含标题的行。
 
-    遇到 403/网络错误时重建 session 并重试，不因反爬拦截而停止翻页。
+    遇到 403/网络错误时切换代理重建 session 并重试，不因反爬拦截而停止翻页。
     只有当 API 返回真正的空数据（rptCode=200, rows=[]）时才停止。
     """
+    from web_scraper_service.config import settings
+    from web_scraper_service.fetchers.dynamic_proxy import DynamicProxyPool, get_proxy_pool
+
+    pool: DynamicProxyPool | None = None
+    current_proxy: str | None = None
+    if settings.proxy_enabled and settings.proxy_pool_url:
+        pool = get_proxy_pool()
+        await pool.start()
+        current_proxy = pool.get_next()
+        if current_proxy:
+            logger.info("使用代理 {} 开始采集", current_proxy)
+
     rows: list[dict[str, Any]] = []
-    session = await _make_list_session(item_id)
+    session = await _make_list_session(item_id, proxy=current_proxy)
     consecutive_errors = 0
 
     try:
@@ -149,15 +164,22 @@ async def discover_doc_rows(
 
             if status == _PageStatus.ERROR:
                 consecutive_errors += 1
+
+                # 切换代理
+                if pool is not None and current_proxy is not None:
+                    pool.mark_failed(current_proxy)
+                    current_proxy = pool.get_next()
+
                 if consecutive_errors > _MAX_ERROR_RETRIES:
                     logger.warning("连续 {} 次错误，跳过第 {} 页继续", consecutive_errors, page)
                     consecutive_errors = 0
                     continue
                 backoff = _ERROR_BACKOFF_BASE * (2 ** (consecutive_errors - 1))
-                logger.warning("列表第 {} 页响应异常，{}s 后重建 session 重试", page, backoff)
+                proxy_info = f"代理 {current_proxy}" if current_proxy else "无代理"
+                logger.warning("列表第 {} 页响应异常（{}），{}s 后重建 session 重试", page, proxy_info, backoff)
                 await asyncio.sleep(backoff)
                 await _close_session(session)
-                session = await _make_list_session(item_id)
+                session = await _make_list_session(item_id, proxy=current_proxy)
                 # 重试当前页
                 try:
                     resp = await session.fetch(url)
@@ -179,6 +201,8 @@ async def discover_doc_rows(
                 await asyncio.sleep(0.5)
     finally:
         await _close_session(session)
+        if pool is not None:
+            await pool.stop()
 
     return rows
 
