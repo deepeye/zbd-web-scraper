@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from web_scraper_service.crawlers.nfra import (
-    _response_has_rows,
+    _PageStatus,
+    _check_response,
     build_detail_html_url,
     build_list_html_url,
     build_list_url,
@@ -86,39 +87,39 @@ def test_parse_doc_rows_docid_non_digit_string_skipped() -> None:
     assert parse_doc_rows(body) == []
 
 
-# ── _response_has_rows ──────────────────────────────────────
+# ── _check_response ────────────────────────────────────────
 
 
-def test_response_has_rows_true() -> None:
-    assert _response_has_rows(
+def test_check_response_has_data() -> None:
+    assert _check_response(
         '{"rptCode":200,"data":{"rows":[{"docId":1}]}}'
-    ) is True
+    ) == _PageStatus.HAS_DATA
 
 
-def test_response_has_rows_empty_rows() -> None:
-    assert _response_has_rows(
+def test_check_response_empty_rows() -> None:
+    assert _check_response(
         '{"rptCode":200,"data":{"rows":[]}}'
-    ) is False
+    ) == _PageStatus.EMPTY
 
 
-def test_response_has_rows_missing_rows() -> None:
-    assert _response_has_rows('{"rptCode":200,"data":{}}') is False
+def test_check_response_missing_rows() -> None:
+    assert _check_response('{"rptCode":200,"data":{}}') == _PageStatus.EMPTY
 
 
-def test_response_has_rows_bad_code() -> None:
-    assert _response_has_rows('{"rptCode":404,"data":{"rows":[{"docId":1}]}}') is False
+def test_check_response_bad_code() -> None:
+    assert _check_response('{"rptCode":404,"data":{"rows":[{"docId":1}]}}') == _PageStatus.ERROR
 
 
-def test_response_has_rows_invalid_json() -> None:
-    assert _response_has_rows("<html>404</html>") is False
+def test_check_response_invalid_json() -> None:
+    assert _check_response("<html>403 Forbidden</html>") == _PageStatus.ERROR
 
 
-def test_response_has_rows_accepts_bytes() -> None:
-    assert _response_has_rows(b'{"rptCode":200,"data":{"rows":[{"docId":1}]}}') is True
+def test_check_response_accepts_bytes() -> None:
+    assert _check_response(b'{"rptCode":200,"data":{"rows":[{"docId":1}]}}') == _PageStatus.HAS_DATA
 
 
-def test_response_has_rows_docid_string() -> None:
-    """docId 为字符串时 _response_has_rows 仍返回 True（不做类型过滤）。"""
-    assert _response_has_rows(
+def test_check_response_docid_string() -> None:
+    """docId 为字符串时 _check_response 仍返回 HAS_DATA（不做类型过滤）。"""
+    assert _check_response(
         '{"rptCode":200,"data":{"rows":[{"docId":"1263990"}]}}'
-    ) is True
+    ) == _PageStatus.HAS_DATA

@@ -48,15 +48,14 @@ async def run_crawl(
     concurrency: int = 2,
     download_delay: float = 1.0,
 ) -> dict[str, Any]:
-    from scrapling.fetchers import AsyncDynamicSession, AsyncStealthySession
+    from scrapling.fetchers import AsyncDynamicSession
 
     await init_equity_change_table()
 
     item_ids = (item_id,) if item_id is not None else DEFAULT_ITEM_IDS
     rows: list[dict[str, Any]] = []
-    async with AsyncStealthySession(headless=True) as session:
-        for current_item_id in item_ids:
-            rows.extend(await discover_doc_rows(session, current_item_id, pages))
+    for current_item_id in item_ids:
+        rows.extend(await discover_doc_rows(current_item_id, pages))
 
     if not rows:
         return {"discovered": 0, "qualified": 0, "pending": 0, "extracted_rows": 0, "stored": 0}

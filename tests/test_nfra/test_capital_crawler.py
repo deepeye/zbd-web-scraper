@@ -19,7 +19,7 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
         ],
     }
 
-    async def fake_discover(session, item_id, pages):
+    async def fake_discover(item_id, pages):
         return rows_by_item[item_id]
 
     class FakeRepo:
@@ -68,7 +68,7 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
 
 @pytest.mark.asyncio
 async def test_run_crawl_skips_existing_docs(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_discover(session, item_id, pages):
+    async def fake_discover(item_id, pages):
         return [{"docId": 1, "docTitle": "关于A公司变更注册资本的批复"}]
 
     class FakeRepo:
