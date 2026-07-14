@@ -120,29 +120,33 @@ async def _rebuild_session_with_proxy(
     pool: Any,
     current_proxy: str | None,
 ) -> tuple[Any, str | None]:
-    """代理失败时从 API 重新获取新代理 IP 并重建 session，最多重试 5 次。"""
+    """代理失败时从文件缓存取下一个代理，全部耗尽后等待 5 分钟重新获取。"""
     from web_scraper_service.fetchers.dynamic_proxy import DynamicProxyPool
 
     if pool is not None and current_proxy is not None:
         pool.mark_failed(current_proxy)
 
     if pool is not None:
-        for attempt in range(1, 6):
-            fresh = await pool.fetch_fresh()
-            if fresh is None:
-                logger.warning("获取新代理失败（第 {} 次）", attempt)
-                continue
+        for _ in range(2):  # 最多两轮：当前批次 + 刷新后批次
+            next_proxy = pool.get_next()
+            if next_proxy is None and pool.is_exhausted():
+                await pool.wait_and_refresh()
+                next_proxy = pool.get_next()
+
+            if next_proxy is None:
+                break
+
             try:
-                session = await _make_list_session(item_id, proxy=fresh)
-                logger.info("新代理 {} 可用（第 {} 次获取）", fresh, attempt)
-                return session, fresh
+                session = await _make_list_session(item_id, proxy=next_proxy)
+                logger.info("代理 {} 可用", next_proxy)
+                return session, next_proxy
             except Exception as exc:
-                logger.warning("新代理 {} 连接失败: {}（第 {} 次）", fresh, exc, attempt)
-                pool.mark_failed(fresh)
+                logger.warning("代理 {} 连接失败: {}", next_proxy, exc)
+                pool.mark_failed(next_proxy)
                 continue
 
-    # 多次获取新代理仍失败，回退无代理
-    logger.warning("多次获取新代理均不可用，回退到无代理模式")
+    # 全部失败，回退无代理
+    logger.warning("所有代理不可用，回退到无代理模式")
     session = await _make_list_session(item_id, proxy=None)
     return session, None
 

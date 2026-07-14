@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     proxy_pool_auth_pwd: str = ""  # 代理认证密码
     proxy_rotation_strategy: Literal["round-robin", "random"] = "round-robin"
     proxy_list: str = ""
+    proxy_cache_file: str = ""  # 代理缓存文件路径，默认 BASE_DIR/proxy_cache.json
 
     @property
     def proxies(self) -> list[str]:
