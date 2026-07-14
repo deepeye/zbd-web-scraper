@@ -46,3 +46,6 @@ docker-compose.prod.yml
 
 # Scrapling state
 .crawl_state/
+
+# Proxy cache
+proxy_cache.json
