@@ -115,11 +115,12 @@ async def _make_list_session(item_id: int, proxy: str | None = None) -> Any:
 
 
 def _build_proxy_url(server: str) -> str:
-    """构建带认证的代理 URL。"""
+    """构建带认证的代理 URL，格式: http://key:pwd@ip:port。"""
     from web_scraper_service.config import settings
 
-    if settings.proxy_pool_auth:
-        return f"http://{settings.proxy_pool_auth}@{server}"
+    if settings.proxy_pool_auth_key:
+        pwd = settings.proxy_pool_auth_pwd
+        return f"http://{settings.proxy_pool_auth_key}:{pwd}@{server}"
     return f"http://{server}"
 
 

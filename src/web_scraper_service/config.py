@@ -81,7 +81,8 @@ class Settings(BaseSettings):
     # ── Proxy ──────────────────────────────────────────────
     proxy_enabled: bool = False
     proxy_pool_url: str = ""
-    proxy_pool_auth: str = ""  # username:password for proxy auth, or just username
+    proxy_pool_auth_key: str = ""  # 代理认证用户名
+    proxy_pool_auth_pwd: str = ""  # 代理认证密码
     proxy_rotation_strategy: Literal["round-robin", "random"] = "round-robin"
     proxy_list: str = ""
 
