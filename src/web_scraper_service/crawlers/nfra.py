@@ -171,7 +171,7 @@ async def _try_make_session(item_id: int, proxy: str | None) -> Any:
     session = AsyncStealthySession(**kwargs)
     await session.__aenter__()
     try:
-        await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=60000)
+        await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=5000)
     except Exception:
         await session.__aexit__(None, None, None)
         raise

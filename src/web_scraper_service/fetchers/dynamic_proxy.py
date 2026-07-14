@@ -84,18 +84,19 @@ class DynamicProxyPool:
                     pass
             self._proxies = proxies
             self._deadline = deadline_str
-            self._failed.clear()
-            logger.info("Loaded {} proxies from cache, deadline={}", len(proxies), deadline_str)
+            self._failed = set(data.get("failed") or [])
+            logger.info("Loaded {} proxies from cache, deadline={}, failed={}",
+                        len(proxies), deadline_str, len(self._failed))
             return True
         except Exception as exc:
             logger.warning("Failed to load proxy cache: {}", exc)
             return False
 
     def _save_cache(self) -> None:
-        """Write current proxies and deadline to the cache file."""
-        data = {"proxies": self._proxies, "deadline": self._deadline}
+        """Write current proxies, deadline, and failed set to the cache file."""
+        data = {"proxies": self._proxies, "deadline": self._deadline, "failed": list(self._failed)}
         self._cache_file.write_text(json.dumps(data, ensure_ascii=False))
-        logger.info("Saved {} proxies to {}", len(self._proxies), self._cache_file)
+        logger.info("Saved {} proxies ({} failed) to {}", len(self._proxies), len(self._failed), self._cache_file)
 
     # ── Refresh ──────────────────────────────────────────────
 
@@ -127,13 +128,14 @@ class DynamicProxyPool:
         return available[0] if available else None
 
     def mark_failed(self, proxy: str) -> None:
-        """Mark a proxy as failed."""
+        """Mark a proxy as failed and persist to cache file."""
         self._failed.add(proxy)
         remaining = len(self._proxies) - len(self._failed)
         logger.warning(
             "DynamicProxyPool: {} marked failed, {}/{} remaining",
             proxy, max(remaining, 0), len(self._proxies),
         )
+        self._save_cache()
 
     def is_exhausted(self) -> bool:
         """True when all proxies have been marked failed."""
