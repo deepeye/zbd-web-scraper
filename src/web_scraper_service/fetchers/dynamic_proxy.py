@@ -109,6 +109,19 @@ class DynamicProxyPool:
     def available_count(self) -> int:
         return max(len(self._proxies) - len(self._failed), 0)
 
+    async def fetch_fresh(self) -> str | None:
+        """Fetch a single fresh proxy directly from the API, bypassing the pool.
+
+        Used when the current proxy fails (403/network error) to get a brand
+        new IP instead of rotating through potentially stale pooled proxies.
+        """
+        servers = await self._fetch()
+        if servers:
+            proxy = servers[0]
+            logger.info("DynamicProxyPool: fetched fresh proxy {}", proxy)
+            return proxy
+        return None
+
 
 # Module-level singleton
 _pool: DynamicProxyPool | None = None
