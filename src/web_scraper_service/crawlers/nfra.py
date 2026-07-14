@@ -40,19 +40,26 @@ def build_list_html_url(item_id: int) -> str:
 
 def _response_has_rows(body: str | bytes) -> bool:
     """检查原始 API 响应是否包含非空 data.rows（不做 docId 类型过滤）。"""
+    raw = body
     if isinstance(body, bytes):
         try:
             body = body.decode("utf-8", errors="replace")
         except Exception:
+            logger.warning("API 响应 bytes 解码失败，原始长度: {}", len(raw) if isinstance(raw, bytes) else 0)
             return False
     try:
         payload: dict[str, Any] = json.loads(body)
     except (json.JSONDecodeError, ValueError):
+        logger.warning("API 响应非 JSON，原始内容: {}", str(body)[:500])
         return False
     if payload.get("rptCode") != 200:
+        logger.warning("API rptCode 异常: rptCode={}, msg={}", payload.get("rptCode"), payload.get("msg", ""))
         return False
     rows = (payload.get("data") or {}).get("rows")
-    return isinstance(rows, list) and len(rows) > 0
+    if not (isinstance(rows, list) and len(rows) > 0):
+        logger.warning("API data.rows 为空: total={}", (payload.get("data") or {}).get("total", "N/A"))
+        return False
+    return True
 
 
 def parse_doc_rows(body: str | bytes) -> list[dict[str, Any]]:
