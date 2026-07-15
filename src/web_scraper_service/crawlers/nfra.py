@@ -166,14 +166,27 @@ def _build_proxy_url(server: str | None = None) -> str | None:
     """
     from web_scraper_service.config import settings
 
+    logger.debug(
+        "_build_proxy_url: proxy_enabled={} pool_url={!r} auth_key={!r} auth_pwd={!r} proxy_list={!r} server={!r}",
+        settings.proxy_enabled,
+        settings.proxy_pool_url,
+        settings.proxy_pool_auth_key,
+        settings.proxy_pool_auth_pwd,
+        settings.proxy_list,
+        server,
+    )
+
     if not settings.proxy_enabled:
+        logger.debug("_build_proxy_url: proxy_enabled=False, returning None")
         return None
 
     raw = server
     if not raw:
         proxies = settings.proxies
         raw = proxies[0] if proxies else None
+        logger.debug("_build_proxy_url: no server given, picked from proxy_list: {!r}", raw)
     if not raw:
+        logger.warning("_build_proxy_url: no proxy server available")
         return None
 
     raw = raw.strip()
@@ -216,14 +229,19 @@ def _build_proxy_url(server: str | None = None) -> str | None:
         pwd = parsed_pwd or pwd
 
     if not host:
+        logger.warning("_build_proxy_url: could not extract host from {!r}", raw)
         return None
 
     server_part = f"{host}:{port}" if port else host
     if user:
         user_q = quote(user, safe="")
         pwd_q = quote(pwd or "", safe="")
-        return f"{scheme}://{user_q}:{pwd_q}@{server_part}"
-    return f"{scheme}://{server_part}"
+        result = f"{scheme}://{user_q}:{pwd_q}@{server_part}"
+    else:
+        result = f"{scheme}://{server_part}"
+
+    logger.info("_build_proxy_url: built proxy URL for server={!r} -> {}", raw, _mask_proxy_url(result))
+    return result
 
 
 def _mask_proxy_url(proxy_url: str | None) -> str:
@@ -287,7 +305,24 @@ async def discover_doc_rows(
         await pool.start()
         current_proxy = pool.get_next()
         if current_proxy:
-            logger.info("使用代理 {} 开始采集", current_proxy)
+            logger.info(
+                "discover_doc_rows: 使用代理 {} 开始采集 (pool available={} total={})",
+                current_proxy,
+                pool.available_count,
+                len(pool._proxies),
+            )
+        else:
+            logger.warning(
+                "discover_doc_rows: proxy_enabled=True 但无可用代理 (pool available={} total={})",
+                pool.available_count if pool else 0,
+                len(pool._proxies) if pool else 0,
+            )
+    else:
+        logger.info(
+            "discover_doc_rows: 无代理模式 (proxy_enabled={} proxy_pool_url={!r})",
+            settings.proxy_enabled,
+            settings.proxy_pool_url,
+        )
 
     rows: list[dict[str, Any]] = []
     session = await _make_list_session(item_id, proxy=current_proxy)
