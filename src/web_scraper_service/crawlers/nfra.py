@@ -13,6 +13,7 @@ import json
 from typing import Any
 from urllib.parse import quote, urlparse
 
+import httpx
 from loguru import logger
 
 from web_scraper_service.crawlers.nfra_extractor import extract_rows_llm
@@ -286,13 +287,50 @@ async def _close_session(session: Any) -> None:
         pass
 
 
+async def _fetch_list_page_via_httpx(
+    item_id: int,
+    page: int,
+    proxy: str | None,
+) -> tuple[_PageStatus, str]:
+    """用 httpx 请求列表 API（兼容 curl 代理格式）。"""
+    url = build_list_url(item_id, page)
+    proxy_url = _build_proxy_url(proxy)
+
+    mounts = None
+    if proxy_url:
+        mounts = {
+            "http://": httpx.AsyncHTTPTransport(proxy=proxy_url),
+            "https://": httpx.AsyncHTTPTransport(proxy=proxy_url),
+        }
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/126.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            mounts=mounts, timeout=30, follow_redirects=True
+        ) as client:
+            resp = await client.get(url, headers=headers)
+            return _check_response(resp.text), resp.text
+    except Exception as exc:
+        logger.warning("列表第 {} 页 httpx 请求异常: {}", page, exc)
+        return _PageStatus.ERROR, ""
+
+
 async def discover_doc_rows(
     item_id: int,
     pages: int,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """用浏览器持久会话遍历列表 API，返回含标题的行和当前使用的代理 server。
+    """用 httpx 遍历列表 API（替代浏览器 session，解决代理与 Chromium 不兼容问题）。
 
-    遇到 403/网络错误时切换代理重建 session 并重试，不因反爬拦截而停止翻页。
+    遇到 403/网络错误时切换代理重试，不因反爬拦截而停止翻页。
     只有当 API 返回真正的空数据（rptCode=200, rows=[]）时才停止。
     """
     from web_scraper_service.config import settings
@@ -325,65 +363,54 @@ async def discover_doc_rows(
         )
 
     rows: list[dict[str, Any]] = []
-    session = await _make_list_session(item_id, proxy=current_proxy)
     consecutive_errors = 0
 
-    try:
-        for page in range(1, pages + 1):
-            url = build_list_url(item_id, page)
-            try:
-                resp = await session.fetch(url)
-                status = _check_response(resp.body)
-            except Exception as exc:
-                logger.warning("列表第 {} 页请求异常: {}", page, exc)
-                status = _PageStatus.ERROR
+    for page in range(1, pages + 1):
+        status, body = await _fetch_list_page_via_httpx(item_id, page, current_proxy)
 
-            if status == _PageStatus.EMPTY:
-                logger.info("列表第 {} 页无数据，停止翻页", page)
-                break
+        if status == _PageStatus.EMPTY:
+            logger.info("列表第 {} 页无数据，停止翻页", page)
+            break
 
-            if status == _PageStatus.ERROR:
-                consecutive_errors += 1
+        if status == _PageStatus.ERROR:
+            consecutive_errors += 1
 
-                if consecutive_errors > _MAX_ERROR_RETRIES:
-                    logger.warning("连续 {} 次错误，跳过第 {} 页继续", consecutive_errors, page)
-                    consecutive_errors = 0
-                    continue
+            if consecutive_errors > _MAX_ERROR_RETRIES:
+                logger.warning("连续 {} 次错误，跳过第 {} 页继续", consecutive_errors, page)
+                consecutive_errors = 0
+                continue
 
-                backoff = _ERROR_BACKOFF_BASE * (2 ** (consecutive_errors - 1))
-                logger.warning("列表第 {} 页响应异常，{}s 后切换代理重试", page, backoff)
-                await asyncio.sleep(backoff)
+            backoff = _ERROR_BACKOFF_BASE * (2 ** (consecutive_errors - 1))
+            logger.warning("列表第 {} 页响应异常，{}s 后切换代理重试", page, backoff)
+            await asyncio.sleep(backoff)
 
-                await _close_session(session)
-                session, current_proxy = await _rebuild_session_with_proxy(
-                    item_id, pool, current_proxy,
-                )
+            if pool is not None and current_proxy is not None:
+                pool.mark_failed(current_proxy)
+
+            if pool is not None:
+                current_proxy = pool.get_next()
+                if not current_proxy and pool.is_exhausted():
+                    await pool.wait_and_refresh()
+                    current_proxy = pool.get_next()
                 proxy_info = f"代理 {current_proxy}" if current_proxy else "无代理"
                 logger.info("切换到 {}，重试第 {} 页", proxy_info, page)
 
-                # 重试当前页
-                try:
-                    resp = await session.fetch(url)
-                    status = _check_response(resp.body)
-                except Exception as exc:
-                    logger.warning("列表第 {} 页重试仍失败: {}", page, exc)
-                    status = _PageStatus.ERROR
-                if status != _PageStatus.HAS_DATA:
-                    logger.warning("列表第 {} 页重试后仍无数据，跳过继续", page)
-                    continue
-                consecutive_errors = 0
-                # fall through to HAS_DATA handling below
+            # 重试当前页
+            status, body = await _fetch_list_page_via_httpx(item_id, page, current_proxy)
+            if status != _PageStatus.HAS_DATA:
+                logger.warning("列表第 {} 页重试后仍无数据，跳过继续", page)
+                continue
+            consecutive_errors = 0
 
-            if status == _PageStatus.HAS_DATA:
-                consecutive_errors = 0
-                page_rows = parse_doc_rows(resp.body)
-                rows.extend(page_rows)
-                logger.info("列表第 {} 页获得 {} 条，累计 {}", page, len(page_rows), len(rows))
-                await asyncio.sleep(0.5)
-    finally:
-        await _close_session(session)
-        if pool is not None:
-            await pool.stop()
+        if status == _PageStatus.HAS_DATA:
+            consecutive_errors = 0
+            page_rows = parse_doc_rows(body)
+            rows.extend(page_rows)
+            logger.info("列表第 {} 页获得 {} 条，累计 {}", page, len(page_rows), len(rows))
+            await asyncio.sleep(0.5)
+
+    if pool is not None:
+        await pool.stop()
 
     return rows, current_proxy
 
