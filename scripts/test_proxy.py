@@ -1,7 +1,11 @@
 """Standalone proxy connectivity test for nfra.gov.cn.
 
 Usage (inside the project container):
+    # Test without proxy (direct connection)
     python scripts/test_proxy.py
+
+    # Test with a specific proxy server
+    python scripts/test_proxy.py --server 115.226.144.16:15827
 
 This script tests the proxy configuration directly with Playwright,
 bypassing Scrapling and the full crawler logic.
@@ -9,6 +13,7 @@ bypassing Scrapling and the full crawler logic.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import sys
 
@@ -21,38 +26,44 @@ from web_scraper_service.crawlers.nfra import _build_proxy_url
 TARGET = "https://www.nfra.gov.cn/cn/view/pages/ItemList.html?itemPId=923&itemId=4291&itemUrl=ItemListRightList.html&itemName=zhujiguan"
 
 
-async def test_with_scrapling() -> bool:
-    """Test proxy via Scrapling's AsyncStealthySession (same as discover_doc_rows)."""
-    from scrapling.fetchers import AsyncStealthySession
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Test proxy connectivity for nfra.gov.cn")
+    parser.add_argument(
+        "--server",
+        type=str,
+        default=None,
+        help="Proxy server to test, e.g. '115.226.144.16:15827'",
+    )
+    return parser.parse_args()
 
-    proxy_url = _build_proxy_url()
-    logger.info("Scrapling test: proxy_url={}", proxy_url or "None")
 
-    kwargs: dict[str, str] = {"headless": "True"}
+async def test_with_httpx(proxy_url: str | None) -> bool:
+    """Test proxy via httpx (same protocol as curl)."""
+    import httpx
+
+    logger.info("httpx test: proxy_url={}", proxy_url or "None")
+
+    mounts: dict[str, httpx.AsyncHTTPTransport] | None = None
     if proxy_url:
-        kwargs["proxy"] = proxy_url
+        mounts = {
+            "http://": httpx.AsyncHTTPTransport(proxy=proxy_url),
+            "https://": httpx.AsyncHTTPTransport(proxy=proxy_url),
+        }
 
-    session = AsyncStealthySession(**kwargs)
     try:
-        await session.__aenter__()
-        resp = await session.fetch(TARGET, network_idle=True, timeout=20000)
-        logger.info("Scrapling test: SUCCESS, status={}", resp.status)
-        return True
+        async with httpx.AsyncClient(mounts=mounts, timeout=20) as client:
+            resp = await client.get(TARGET)
+            logger.info("httpx test: SUCCESS, status={}", resp.status_code)
+            return True
     except Exception as exc:
-        logger.error("Scrapling test: FAILED - {}", exc)
+        logger.error("httpx test: FAILED - {}", exc)
         return False
-    finally:
-        try:
-            await session.__aexit__(None, None, None)
-        except Exception:
-            pass
 
 
-async def test_with_raw_playwright() -> bool:
+async def test_with_raw_playwright(proxy_url: str | None) -> bool:
     """Test proxy via raw Playwright (bypass Scrapling)."""
     from playwright.async_api import async_playwright
 
-    proxy_url = _build_proxy_url()
     logger.info("Raw Playwright test: proxy_url={}", proxy_url or "None")
 
     proxy_dict: dict[str, str] | None = None
@@ -82,29 +93,43 @@ async def test_with_raw_playwright() -> bool:
             await browser.close()
 
 
-async def test_with_httpx() -> bool:
-    """Test proxy via httpx (same protocol as curl)."""
-    import httpx
+async def test_with_scrapling(proxy_url: str | None) -> bool:
+    """Test proxy via Scrapling's AsyncStealthySession (same as discover_doc_rows)."""
+    from scrapling.fetchers import AsyncStealthySession
 
-    proxy_url = _build_proxy_url()
-    logger.info("httpx test: proxy_url={}", proxy_url or "None")
+    logger.info("Scrapling test: proxy_url={}", proxy_url or "None")
 
-    proxies: dict[str, str] | None = None
+    kwargs: dict[str, object] = {"headless": True}
     if proxy_url:
-        proxies = {"http://": proxy_url, "https://": proxy_url}
+        kwargs["proxy"] = proxy_url
 
+    session = AsyncStealthySession(**kwargs)
     try:
-        async with httpx.AsyncClient(proxies=proxies, timeout=20) as client:
-            resp = await client.get(TARGET)
-            logger.info("httpx test: SUCCESS, status={}", resp.status_code)
-            return True
+        await session.__aenter__()
+        resp = await session.fetch(TARGET, network_idle=True, timeout=20000)
+        logger.info("Scrapling test: SUCCESS, status={}", resp.status)
+        return True
     except Exception as exc:
-        logger.error("httpx test: FAILED - {}", exc)
+        logger.error("Scrapling test: FAILED - {}", exc)
         return False
+    finally:
+        try:
+            await session.__aexit__(None, None, None)
+        except Exception:
+            pass
 
 
 async def main() -> int:
+    args = parse_args()
     setup_logging()
+
+    proxy_url: str | None = None
+    if args.server:
+        proxy_url = _build_proxy_url(args.server)
+        logger.info("Built proxy URL for server '{}': {}", args.server, proxy_url or "None")
+    else:
+        logger.info("No --server given; testing direct connection (no proxy)")
+
     logger.info("=" * 60)
     logger.info("Proxy connectivity test for {}", TARGET)
     logger.info("=" * 60)
@@ -112,13 +137,13 @@ async def main() -> int:
     results: dict[str, bool] = {}
 
     logger.info("\n--- Test 1: httpx (baseline) ---")
-    results["httpx"] = await test_with_httpx()
+    results["httpx"] = await test_with_httpx(proxy_url)
 
     logger.info("\n--- Test 2: Raw Playwright ---")
-    results["raw_playwright"] = await test_with_raw_playwright()
+    results["raw_playwright"] = await test_with_raw_playwright(proxy_url)
 
     logger.info("\n--- Test 3: Scrapling AsyncStealthySession ---")
-    results["scrapling"] = await test_with_scrapling()
+    results["scrapling"] = await test_with_scrapling(proxy_url)
 
     logger.info("\n" + "=" * 60)
     logger.info("Results:")
