@@ -423,7 +423,11 @@ async def _fetch_detail_rows(
 ) -> list[dict[str, Any]]:
     """打开详情 HTML，LLM 抽取，返回 djg_data 行列表。"""
     try:
-        resp = await session.fetch(doc_url, network_idle=True, timeout=60000)
+        # disable_resources：详情页 Angular SPA 的 font/image/css 子资源永不完成,
+        # 致 goto 默认 "load" 等满 60s 超时；禁用后 ~4s 触发,JS 不被禁用、正文照常渲染。
+        resp = await session.fetch(
+            doc_url, network_idle=True, timeout=60000, disable_resources=True
+        )
         # 用渲染后 DOM（html_content），非原始响应体 body——抽取器选择器针对渲染 DOM 设计。
         # body 是 angular 模板壳子，分局文档的 doc_number 仅在渲染后正文/绑定元素中可见。
         html = resp.html_content or ""
@@ -487,7 +491,12 @@ async def run_crawl(
         logger.info("doc_id={} 抽取 {} 行，写入 {} 行", r["docId"], len(batch), stored)
         return len(batch), stored
 
-    async with AsyncDynamicSession(headless=True, proxy=_build_proxy_url(current_proxy)) as session:
+    async with AsyncDynamicSession(
+        headless=True,
+        proxy=_build_proxy_url(current_proxy),
+        # 默认 max_pages=1，concurrency>1 时第二个并发请求会等满 60s 报池耗尽
+        max_pages=concurrency,
+    ) as session:
         results = await asyncio.gather(*(_guarded(r) for r in pending))
     extracted_rows = sum(r[0] for r in results)
     stored = sum(r[1] for r in results)
