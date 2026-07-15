@@ -35,32 +35,48 @@ class DynamicProxyPool:
     # ── API fetch ────────────────────────────────────────────
 
     async def _fetch_all(self) -> tuple[list[str], str | None]:
-        """Fetch proxies from the configured URL. Returns (servers, deadline)."""
+        """Fetch proxies from the configured URL. Returns (servers, deadline).
+
+        On a 400 Bad Request (typical qg.net rate-limit response) the fetch
+        loops with a 5-minute backoff until it succeeds.
+        """
         url = settings.proxy_pool_url
         if not url:
             logger.warning("DynamicProxyPool: proxy_pool_url not configured")
             return [], None
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(15)) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
-                payload = resp.json()
-        except Exception as exc:
-            logger.error("DynamicProxyPool: fetch failed: {}", exc)
-            return [], None
 
-        if payload.get("code") != "SUCCESS":
-            logger.error("DynamicProxyPool: API returned code={}", payload.get("code"))
-            return [], None
+        while True:
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(15)) as client:
+                    resp = await client.get(url)
+                    resp.raise_for_status()
+                    payload = resp.json()
+            except httpx.HTTPStatusError as exc:
+                logger.error("DynamicProxyPool: fetch failed: {}", exc)
+                if exc.response.status_code == 400:
+                    logger.info(
+                        "DynamicProxyPool: got 400 Bad Request, retrying in {}s",
+                        _REFRESH_COOLDOWN,
+                    )
+                    await asyncio.sleep(_REFRESH_COOLDOWN)
+                    continue
+                return [], None
+            except Exception as exc:
+                logger.error("DynamicProxyPool: fetch failed: {}", exc)
+                return [], None
 
-        ips = (payload.get("data") or {}).get("ips") or []
-        servers = [ip["server"] for ip in ips if isinstance(ip, dict) and ip.get("server")]
-        deadline = ips[0].get("deadline") if ips else None
-        if servers:
-            logger.info("DynamicProxyPool: fetched {} proxies, deadline={}", len(servers), deadline)
-        else:
-            logger.warning("DynamicProxyPool: no proxies in response")
-        return servers, deadline
+            if payload.get("code") != "SUCCESS":
+                logger.error("DynamicProxyPool: API returned code={}", payload.get("code"))
+                return [], None
+
+            ips = (payload.get("data") or {}).get("ips") or []
+            servers = [ip["server"] for ip in ips if isinstance(ip, dict) and ip.get("server")]
+            deadline = ips[0].get("deadline") if ips else None
+            if servers:
+                logger.info("DynamicProxyPool: fetched {} proxies, deadline={}", len(servers), deadline)
+            else:
+                logger.warning("DynamicProxyPool: no proxies in response")
+            return servers, deadline
 
     # ── File cache ───────────────────────────────────────────
 
