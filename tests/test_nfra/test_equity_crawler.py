@@ -20,7 +20,7 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
     }
 
     async def fake_discover(item_id, pages):
-        return rows_by_item[item_id]
+        return rows_by_item[item_id], "115.226.144.16:15827"
 
     class FakeRepo:
         def __init__(self, session):
@@ -69,7 +69,7 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
 @pytest.mark.asyncio
 async def test_run_crawl_skips_existing_docs(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_discover(item_id, pages):
-        return [{"docId": 1, "docTitle": "关于A公司股权变更的批复"}]
+        return [{"docId": 1, "docTitle": "关于A公司股权变更的批复"}], None
 
     class FakeRepo:
         def __init__(self, session):

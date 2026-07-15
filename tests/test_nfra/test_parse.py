@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
 from web_scraper_service.crawlers.nfra import (
-    _PageStatus,
+    _build_proxy_url,
     _check_response,
+    _PageStatus,
     build_detail_html_url,
     build_list_html_url,
     build_list_url,
@@ -123,3 +126,68 @@ def test_check_response_docid_string() -> None:
     assert _check_response(
         '{"rptCode":200,"data":{"rows":[{"docId":"1263990"}]}}'
     ) == _PageStatus.HAS_DATA
+
+
+# ── _build_proxy_url ───────────────────────────────────────
+
+
+def _patch_proxy_settings(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    enabled: bool = True,
+    key: str = "5CDBEC47",
+    pwd: str = "48BC8939D827",
+    pool_url: str = "https://pool.example/get",
+    proxy_list: str = "",
+) -> None:
+    from web_scraper_service.config import settings
+
+    monkeypatch.setattr(settings, "proxy_enabled", enabled)
+    monkeypatch.setattr(settings, "proxy_pool_auth_key", key)
+    monkeypatch.setattr(settings, "proxy_pool_auth_pwd", pwd)
+    monkeypatch.setattr(settings, "proxy_pool_url", pool_url)
+    monkeypatch.setattr(settings, "proxy_list", proxy_list)
+
+
+def test_build_proxy_url_basic_ip_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch)
+
+    assert _build_proxy_url("115.226.144.16:15827") == (
+        "http://5CDBEC47:48BC8939D827@115.226.144.16:15827"
+    )
+
+
+def test_build_proxy_url_with_scheme(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch)
+
+    assert _build_proxy_url("http://115.226.144.16:15827") == (
+        "http://5CDBEC47:48BC8939D827@115.226.144.16:15827"
+    )
+
+
+def test_build_proxy_url_settings_wins(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch)
+
+    assert _build_proxy_url("old_user:old_pass@115.226.144.16:15827") == (
+        "http://5CDBEC47:48BC8939D827@115.226.144.16:15827"
+    )
+
+
+def test_build_proxy_url_encodes_special_chars(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch, key="user@domain", pwd="p@ss:w#rd")
+
+    assert _build_proxy_url("115.226.144.16:15827") == (
+        "http://user%40domain:p%40ss%3Aw%23rd@115.226.144.16:15827"
+    )
+
+
+def test_build_proxy_url_disabled_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch, enabled=False)
+
+    assert _build_proxy_url("115.226.144.16:15827") is None
+
+
+def test_build_proxy_url_static_proxy_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_proxy_settings(monkeypatch, pool_url="", proxy_list="http://static.proxy:8080")
+
+    assert _build_proxy_url() == "http://static.proxy:8080"

@@ -11,6 +11,7 @@ import asyncio
 import enum
 import json
 from typing import Any
+from urllib.parse import quote, urlparse
 
 from loguru import logger
 
@@ -152,14 +153,88 @@ async def _rebuild_session_with_proxy(
     return session, None
 
 
-def _build_proxy_url(server: str) -> str:
-    """构建带认证的代理 URL，格式: http://key:pwd@ip:port。"""
+def _build_proxy_url(server: str | None = None) -> str | None:
+    """构建带认证的代理 URL。
+
+    兼容 server 的多种格式：
+    - ip:port
+    - http://ip:port
+    - user:pass@ip:port
+    - http://user:pass@ip:port
+
+    对用户名/密码做 URL encode，避免特殊字符破坏代理 URL。
+    """
     from web_scraper_service.config import settings
 
-    if settings.proxy_pool_auth_key:
-        pwd = settings.proxy_pool_auth_pwd
-        return f"http://{settings.proxy_pool_auth_key}:{pwd}@{server}"
-    return f"http://{server}"
+    if not settings.proxy_enabled:
+        return None
+
+    raw = server
+    if not raw:
+        proxies = settings.proxies
+        raw = proxies[0] if proxies else None
+    if not raw:
+        return None
+
+    raw = raw.strip()
+    if not raw:
+        return None
+
+    # proxy_pool_auth_* 仅对动态代理池生效；静态代理列表使用字符串内嵌认证
+    is_dynamic_pool = bool(settings.proxy_pool_url)
+    user: str | None = (settings.proxy_pool_auth_key or None) if is_dynamic_pool else None
+    pwd: str | None = (settings.proxy_pool_auth_pwd or None) if is_dynamic_pool else None
+    scheme = "http"
+    host: str | None = None
+    port: int | None = None
+    parsed_user: str | None = None
+    parsed_pwd: str | None = None
+
+    if "://" in raw:
+        parsed = urlparse(raw)
+        scheme = parsed.scheme or scheme
+        host = parsed.hostname
+        port = parsed.port
+        parsed_user = parsed.username
+        parsed_pwd = parsed.password
+    else:
+        host_part = raw
+        if "@" in raw:
+            creds, host_part = raw.rsplit("@", 1)
+            if ":" in creds:
+                parsed_user, parsed_pwd = creds.split(":", 1)
+        if ":" in host_part:
+            host, port_str = host_part.rsplit(":", 1)
+            if port_str.isdigit():
+                port = int(port_str)
+        else:
+            host = host_part
+
+    # 配置中的认证优先级高于 server 字符串中的认证
+    if not user:
+        user = parsed_user
+        pwd = parsed_pwd or pwd
+
+    if not host:
+        return None
+
+    server_part = f"{host}:{port}" if port else host
+    if user:
+        user_q = quote(user, safe="")
+        pwd_q = quote(pwd or "", safe="")
+        return f"{scheme}://{user_q}:{pwd_q}@{server_part}"
+    return f"{scheme}://{server_part}"
+
+
+def _mask_proxy_url(proxy_url: str | None) -> str:
+    """打印用：隐藏代理认证信息。"""
+    if not proxy_url:
+        return "无代理"
+    parsed = urlparse(proxy_url)
+    server = f"{parsed.scheme}://{parsed.hostname}"
+    if parsed.port:
+        server += f":{parsed.port}"
+    return f"{server} (with auth)" if parsed.username else server
 
 
 async def _try_make_session(item_id: int, proxy: str | None) -> Any:
@@ -167,12 +242,18 @@ async def _try_make_session(item_id: int, proxy: str | None) -> Any:
     from scrapling.fetchers import AsyncStealthySession
 
     kwargs: dict[str, Any] = {"headless": True}
+    proxy_url: str | None = None
     if proxy:
-        kwargs["proxy"] = proxy
+        proxy_url = _build_proxy_url(proxy)
+        if proxy_url:
+            kwargs["proxy"] = proxy_url
+            logger.info("nfra 列表页使用代理: {}", _mask_proxy_url(proxy_url))
+        else:
+            logger.warning("nfra 列表页代理配置无效，server={}", proxy)
     session = AsyncStealthySession(**kwargs)
     await session.__aenter__()
     try:
-        await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=5000)
+        await session.fetch(build_list_html_url(item_id), network_idle=True, timeout=15000)
     except Exception:
         await session.__aexit__(None, None, None)
         raise
@@ -190,8 +271,8 @@ async def _close_session(session: Any) -> None:
 async def discover_doc_rows(
     item_id: int,
     pages: int,
-) -> list[dict[str, Any]]:
-    """用浏览器持久会话遍历列表 API，返回含标题的行。
+) -> tuple[list[dict[str, Any]], str | None]:
+    """用浏览器持久会话遍历列表 API，返回含标题的行和当前使用的代理 server。
 
     遇到 403/网络错误时切换代理重建 session 并重试，不因反爬拦截而停止翻页。
     只有当 API 返回真正的空数据（rptCode=200, rows=[]）时才停止。
@@ -269,7 +350,7 @@ async def discover_doc_rows(
         if pool is not None:
             await pool.stop()
 
-    return rows
+    return rows, current_proxy
 
 
 async def _fetch_detail_rows(
@@ -306,7 +387,7 @@ async def run_crawl(
     await init_djg_table()
 
     # 阶段 1：列表发现（含标题）
-    rows = await discover_doc_rows(item_id, pages)
+    rows, current_proxy = await discover_doc_rows(item_id, pages)
     logger.info("共发现 {} 条文档", len(rows))
     if not rows:
         return {"discovered": 0, "pending": 0, "extracted_rows": 0, "stored": 0}
@@ -344,7 +425,7 @@ async def run_crawl(
         logger.info("doc_id={} 抽取 {} 行，写入 {} 行", r["docId"], len(batch), stored)
         return len(batch), stored
 
-    async with AsyncDynamicSession(headless=True) as session:
+    async with AsyncDynamicSession(headless=True, proxy=_build_proxy_url(current_proxy)) as session:
         results = await asyncio.gather(*(_guarded(r) for r in pending))
     extracted_rows = sum(r[0] for r in results)
     stored = sum(r[1] for r in results)

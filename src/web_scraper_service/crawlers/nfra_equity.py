@@ -8,6 +8,7 @@ from typing import Any
 from loguru import logger
 
 from web_scraper_service.crawlers.nfra import (
+    _build_proxy_url,
     build_detail_html_url,
     discover_doc_rows,
 )
@@ -54,8 +55,12 @@ async def run_crawl(
 
     item_ids = (item_id,) if item_id is not None else DEFAULT_ITEM_IDS
     rows: list[dict[str, Any]] = []
+    current_proxy: str | None = None
     for current_item_id in item_ids:
-        rows.extend(await discover_doc_rows(current_item_id, pages))
+        page_rows, proxy = await discover_doc_rows(current_item_id, pages)
+        rows.extend(page_rows)
+        if proxy:
+            current_proxy = proxy
 
     if not rows:
         return {"discovered": 0, "qualified": 0, "pending": 0, "extracted_rows": 0, "stored": 0}
@@ -91,7 +96,7 @@ async def run_crawl(
         logger.info("equity doc_id={} 抽取 {} 行，写入 {} 行", doc_id, len(batch), stored)
         return len(batch), stored
 
-    async with AsyncDynamicSession(headless=True) as session:
+    async with AsyncDynamicSession(headless=True, proxy=_build_proxy_url(current_proxy)) as session:
         results = await asyncio.gather(*(_guarded(row) for row in pending))
 
     extracted_rows = sum(result[0] for result in results)
