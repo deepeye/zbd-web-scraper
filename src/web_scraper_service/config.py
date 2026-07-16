@@ -115,7 +115,8 @@ class Settings(BaseSettings):
     # ── nfra 定时调度 ───────────────────────────────────────
     nfra_schedule_enabled: bool = True
     nfra_schedule_cron: str = "0 8 * * *"
-    nfra_schedule_pages: int = 5
+    nfra_schedule_start_page: int = 1
+    nfra_schedule_end_page: int = 5
     # 注册资本/开业定时：依赖 nfra_schedule_enabled（总开关）+ cron/pages。
     nfra_capital_schedule_enabled: bool = True
     # 股权变更/开业股东定时：同上。

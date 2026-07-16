@@ -49,7 +49,8 @@ async def _fetch_detail_rows(
 
 async def run_crawl(
     item_id: int | None = None,
-    pages: int = 5,
+    start_page: int = 1,
+    end_page: int = 5,
     concurrency: int = 2,
     download_delay: float = 1.0,
 ) -> dict[str, Any]:
@@ -61,7 +62,7 @@ async def run_crawl(
     rows: list[dict[str, Any]] = []
     current_proxy: str | None = None
     for current_item_id in item_ids:
-        page_rows, proxy = await discover_doc_rows(current_item_id, pages)
+        page_rows, proxy = await discover_doc_rows(current_item_id, start_page, end_page)
         rows.extend(page_rows)
         if proxy:
             current_proxy = proxy

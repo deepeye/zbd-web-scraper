@@ -326,7 +326,8 @@ async def _fetch_list_page_via_httpx(
 
 async def discover_doc_rows(
     item_id: int,
-    pages: int,
+    start_page: int,
+    end_page: int,
 ) -> tuple[list[dict[str, Any]], str | None]:
     """用 httpx 遍历列表 API（替代浏览器 session，解决代理与 Chromium 不兼容问题）。
 
@@ -365,7 +366,7 @@ async def discover_doc_rows(
     rows: list[dict[str, Any]] = []
     consecutive_errors = 0
 
-    for page in range(1, pages + 1):
+    for page in range(start_page, end_page + 1):
         status, body = await _fetch_list_page_via_httpx(item_id, page, current_proxy)
 
         if status == _PageStatus.EMPTY:
@@ -443,7 +444,8 @@ async def _fetch_detail_rows(
 
 async def run_crawl(
     item_id: int = 4110,
-    pages: int = 5,
+    start_page: int = 1,
+    end_page: int = 5,
     concurrency: int = 2,
     download_delay: float = 1.0,
 ) -> dict[str, Any]:
@@ -453,7 +455,7 @@ async def run_crawl(
     await init_djg_table()
 
     # 阶段 1：列表发现（含标题）
-    rows, current_proxy = await discover_doc_rows(item_id, pages)
+    rows, current_proxy = await discover_doc_rows(item_id, start_page, end_page)
     logger.info("共发现 {} 条文档", len(rows))
     if not rows:
         return {"discovered": 0, "pending": 0, "extracted_rows": 0, "stored": 0}
