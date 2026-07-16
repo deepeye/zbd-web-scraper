@@ -30,34 +30,40 @@ router = APIRouter(prefix="/nfra", tags=["nfra"])
 
 class CrawlRequest(BaseModel):
     item_id: int = Field(default=4110)
-    pages: int = Field(default=5)
+    start_page: int = Field(default=1, ge=1)
+    end_page: int = Field(default=5, ge=1)
 
 
 class CapitalCrawlRequest(BaseModel):
     item_id: int | None = Field(default=None)
-    pages: int = Field(default=5)
+    start_page: int = Field(default=1, ge=1)
+    end_page: int = Field(default=5, ge=1)
 
 
 class EquityCrawlRequest(BaseModel):
     item_id: int | None = Field(default=None)
-    pages: int = Field(default=5)
+    start_page: int = Field(default=1, ge=1)
+    end_page: int = Field(default=5, ge=1)
 
 
 @router.post("/djg/crawl")
 async def crawl(body: CrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.pages < 1:
-        raise HTTPException(status_code=400, detail="pages must be >= 1")
+    if body.start_page < 1:
+        raise HTTPException(status_code=400, detail="start_page must be >= 1")
+    if body.end_page < body.start_page:
+        raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id < 1:
         raise HTTPException(status_code=400, detail="item_id must be >= 1")
     job_id = str(uuid.uuid4())
     result = nfra_crawl_task.apply_async(
-        args=[body.item_id, body.pages], task_id=job_id
+        args=[body.item_id, body.start_page, body.end_page], task_id=job_id
     )
     return ok(
         {
             "job_id": result.id,
             "item_id": body.item_id,
-            "pages": body.pages,
+            "start_page": body.start_page,
+            "end_page": body.end_page,
             "status": "pending",
         }
     )
@@ -85,19 +91,22 @@ async def crawl_status(job_id: str, _: ApiKey) -> dict[str, Any]:
 
 @router.post("/capital/crawl")
 async def capital_crawl(body: CapitalCrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.pages < 1:
-        raise HTTPException(status_code=400, detail="pages must be >= 1")
+    if body.start_page < 1:
+        raise HTTPException(status_code=400, detail="start_page must be >= 1")
+    if body.end_page < body.start_page:
+        raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id is not None and body.item_id < 1:
         raise HTTPException(status_code=400, detail="item_id must be >= 1")
     job_id = str(uuid.uuid4())
     result = nfra_capital_crawl_task.apply_async(
-        args=[body.item_id, body.pages], task_id=job_id
+        args=[body.item_id, body.start_page, body.end_page], task_id=job_id
     )
     return ok(
         {
             "job_id": result.id,
             "item_id": body.item_id,
-            "pages": body.pages,
+            "start_page": body.start_page,
+            "end_page": body.end_page,
             "status": "pending",
         }
     )
@@ -165,19 +174,22 @@ async def list_capital_data(
 
 @router.post("/equity/crawl")
 async def equity_crawl(body: EquityCrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.pages < 1:
-        raise HTTPException(status_code=400, detail="pages must be >= 1")
+    if body.start_page < 1:
+        raise HTTPException(status_code=400, detail="start_page must be >= 1")
+    if body.end_page < body.start_page:
+        raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id is not None and body.item_id < 1:
         raise HTTPException(status_code=400, detail="item_id must be >= 1")
     job_id = str(uuid.uuid4())
     result = nfra_equity_crawl_task.apply_async(
-        args=[body.item_id, body.pages], task_id=job_id
+        args=[body.item_id, body.start_page, body.end_page], task_id=job_id
     )
     return ok(
         {
             "job_id": result.id,
             "item_id": body.item_id,
-            "pages": body.pages,
+            "start_page": body.start_page,
+            "end_page": body.end_page,
             "status": "pending",
         }
     )
