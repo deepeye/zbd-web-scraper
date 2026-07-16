@@ -46,11 +46,12 @@ def test_post_crawl_defaults(client: TestClient, _api_key: str) -> None:
     data = resp.json()["data"]
     assert data["job_id"] == "job-123"
     assert data["item_id"] == 4110
-    assert data["pages"] == 5
+    assert data["start_page"] == 1
+    assert data["end_page"] == 5
     assert data["status"] == "pending"
     task.apply_async.assert_called_once()
     args, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [4110, 5]
+    assert kwargs["args"] == [4110, 1, 5]
 
 
 def test_post_crawl_custom(client: TestClient, _api_key: str) -> None:
@@ -60,24 +61,34 @@ def test_post_crawl_custom(client: TestClient, _api_key: str) -> None:
         task.apply_async.return_value = fake
         resp = client.post(
             "/api/v1/nfra/djg/crawl",
-            json={"item_id": 4291, "pages": 3},
+            json={"item_id": 4291, "start_page": 2, "end_page": 4},
             headers={"X-API-Key": _api_key},
         )
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["item_id"] == 4291
-    assert data["pages"] == 3
+    assert data["start_page"] == 2
+    assert data["end_page"] == 4
     _, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [4291, 3]
+    assert kwargs["args"] == [4291, 2, 4]
 
 
-def test_post_crawl_invalid_pages(client: TestClient, _api_key: str) -> None:
+def test_post_crawl_invalid_range(client: TestClient, _api_key: str) -> None:
     resp = client.post(
         "/api/v1/nfra/djg/crawl",
-        json={"pages": 0},
+        json={"start_page": 5, "end_page": 3},
         headers={"X-API-Key": _api_key},
     )
     assert resp.status_code == 400
+
+
+def test_post_crawl_invalid_start_page_zero(client: TestClient, _api_key: str) -> None:
+    resp = client.post(
+        "/api/v1/nfra/djg/crawl",
+        json={"start_page": 0},
+        headers={"X-API-Key": _api_key},
+    )
+    assert resp.status_code == 422
 
 
 def test_post_crawl_no_api_key(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,7 +138,8 @@ async def test_init_nfra_schedule_registers_both_itemids(monkeypatch: pytest.Mon
     monkeypatch.setattr(engine.settings, "nfra_capital_schedule_enabled", True)
     monkeypatch.setattr(engine.settings, "nfra_equity_schedule_enabled", True)
     monkeypatch.setattr(engine.settings, "nfra_schedule_cron", "0 8 * * *")
-    monkeypatch.setattr(engine.settings, "nfra_schedule_pages", 5)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_start_page", 1)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_end_page", 5)
 
     sched = MagicMock()
     added: list[dict[str, Any]] = []
@@ -140,23 +152,23 @@ async def test_init_nfra_schedule_registers_both_itemids(monkeypatch: pytest.Mon
     sched.add_job = fake_add_job
     monkeypatch.setattr(engine, "_scheduler", sched)
 
-    dispatched: list[tuple[int, int]] = []
+    dispatched: list[tuple[int, int, int]] = []
     monkeypatch.setattr(
         engine.nfra_crawl_task,
         "delay",
-        lambda iid, pages: dispatched.append((iid, pages)),
+        lambda iid, sp, ep: dispatched.append((iid, sp, ep)),
     )
-    capital_dispatched: list[tuple[Any, int]] = []
+    capital_dispatched: list[tuple[Any, int, int]] = []
     monkeypatch.setattr(
         engine.nfra_capital_crawl_task,
         "delay",
-        lambda item_id, pages: capital_dispatched.append((item_id, pages)),
+        lambda item_id, sp, ep: capital_dispatched.append((item_id, sp, ep)),
     )
-    equity_dispatched: list[tuple[Any, int]] = []
+    equity_dispatched: list[tuple[Any, int, int]] = []
     monkeypatch.setattr(
         engine.nfra_equity_crawl_task,
         "delay",
-        lambda item_id, pages: equity_dispatched.append((item_id, pages)),
+        lambda item_id, sp, ep: equity_dispatched.append((item_id, sp, ep)),
     )
 
     await engine.init_nfra_schedule()
@@ -166,9 +178,9 @@ async def test_init_nfra_schedule_registers_both_itemids(monkeypatch: pytest.Mon
     # APScheduler CronTrigger stores fields in _fields (0=minute, 1=hour).
     # Use str() for robustness across APScheduler versions.
     assert "8" in str(added[0]["trigger"])  # hour=8
-    assert dispatched == [(4110, 5), (4291, 5)]
-    assert capital_dispatched == [(None, 5)]
-    assert equity_dispatched == [(None, 5)]
+    assert dispatched == [(4110, 1, 5), (4291, 1, 5)]
+    assert capital_dispatched == [(None, 1, 5)]
+    assert equity_dispatched == [(None, 1, 5)]
 
 
 @pytest.mark.asyncio
@@ -179,7 +191,8 @@ async def test_init_nfra_schedule_capital_disabled(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(engine.settings, "nfra_capital_schedule_enabled", False)
     monkeypatch.setattr(engine.settings, "nfra_equity_schedule_enabled", False)
     monkeypatch.setattr(engine.settings, "nfra_schedule_cron", "0 8 * * *")
-    monkeypatch.setattr(engine.settings, "nfra_schedule_pages", 5)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_start_page", 1)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_end_page", 5)
 
     sched = MagicMock()
 
@@ -190,7 +203,7 @@ async def test_init_nfra_schedule_capital_disabled(monkeypatch: pytest.MonkeyPat
     sched.add_job = fake_add_job
     monkeypatch.setattr(engine, "_scheduler", sched)
 
-    monkeypatch.setattr(engine.nfra_crawl_task, "delay", lambda iid, pages: None)
+    monkeypatch.setattr(engine.nfra_crawl_task, "delay", lambda iid, sp, ep: None)
     capital_delay = MagicMock()
     monkeypatch.setattr(engine.nfra_capital_crawl_task, "delay", capital_delay)
     monkeypatch.setattr(engine.nfra_equity_crawl_task, "delay", MagicMock())
@@ -208,7 +221,8 @@ async def test_init_nfra_schedule_equity_disabled(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(engine.settings, "nfra_capital_schedule_enabled", False)
     monkeypatch.setattr(engine.settings, "nfra_equity_schedule_enabled", False)
     monkeypatch.setattr(engine.settings, "nfra_schedule_cron", "0 8 * * *")
-    monkeypatch.setattr(engine.settings, "nfra_schedule_pages", 5)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_start_page", 1)
+    monkeypatch.setattr(engine.settings, "nfra_schedule_end_page", 5)
 
     sched = MagicMock()
 
@@ -219,7 +233,7 @@ async def test_init_nfra_schedule_equity_disabled(monkeypatch: pytest.MonkeyPatc
     sched.add_job = fake_add_job
     monkeypatch.setattr(engine, "_scheduler", sched)
 
-    monkeypatch.setattr(engine.nfra_crawl_task, "delay", lambda iid, pages: None)
+    monkeypatch.setattr(engine.nfra_crawl_task, "delay", lambda iid, sp, ep: None)
     monkeypatch.setattr(engine.nfra_capital_crawl_task, "delay", MagicMock())
     equity_delay = MagicMock()
     monkeypatch.setattr(engine.nfra_equity_crawl_task, "delay", equity_delay)
@@ -415,10 +429,11 @@ def test_post_capital_crawl_defaults(client: TestClient, _api_key: str) -> None:
     data = resp.json()["data"]
     assert data["job_id"] == "capital-job-123"
     assert data["item_id"] is None
-    assert data["pages"] == 5
+    assert data["start_page"] == 1
+    assert data["end_page"] == 5
     assert data["status"] == "pending"
     _, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [None, 5]
+    assert kwargs["args"] == [None, 1, 5]
 
 
 def test_post_capital_crawl_custom_item_id(client: TestClient, _api_key: str) -> None:
@@ -428,18 +443,18 @@ def test_post_capital_crawl_custom_item_id(client: TestClient, _api_key: str) ->
         task.apply_async.return_value = fake
         resp = client.post(
             "/api/v1/nfra/capital/crawl",
-            json={"item_id": 4291, "pages": 3},
+            json={"item_id": 4291, "start_page": 2, "end_page": 4},
             headers={"X-API-Key": _api_key},
         )
     assert resp.status_code == 200
     _, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [4291, 3]
+    assert kwargs["args"] == [4291, 2, 4]
 
 
-def test_post_capital_crawl_invalid_pages(client: TestClient, _api_key: str) -> None:
+def test_post_capital_crawl_invalid_range(client: TestClient, _api_key: str) -> None:
     resp = client.post(
         "/api/v1/nfra/capital/crawl",
-        json={"pages": 0},
+        json={"start_page": 5, "end_page": 3},
         headers={"X-API-Key": _api_key},
     )
     assert resp.status_code == 400
@@ -548,10 +563,11 @@ def test_post_equity_crawl_defaults(client: TestClient, _api_key: str) -> None:
     data = resp.json()["data"]
     assert data["job_id"] == "equity-job-123"
     assert data["item_id"] is None
-    assert data["pages"] == 5
+    assert data["start_page"] == 1
+    assert data["end_page"] == 5
     assert data["status"] == "pending"
     _, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [None, 5]
+    assert kwargs["args"] == [None, 1, 5]
 
 
 def test_post_equity_crawl_custom_item_id(client: TestClient, _api_key: str) -> None:
@@ -561,18 +577,18 @@ def test_post_equity_crawl_custom_item_id(client: TestClient, _api_key: str) -> 
         task.apply_async.return_value = fake
         resp = client.post(
             "/api/v1/nfra/equity/crawl",
-            json={"item_id": 4291, "pages": 3},
+            json={"item_id": 4291, "start_page": 2, "end_page": 4},
             headers={"X-API-Key": _api_key},
         )
     assert resp.status_code == 200
     _, kwargs = task.apply_async.call_args
-    assert kwargs["args"] == [4291, 3]
+    assert kwargs["args"] == [4291, 2, 4]
 
 
-def test_post_equity_crawl_invalid_pages(client: TestClient, _api_key: str) -> None:
+def test_post_equity_crawl_invalid_range(client: TestClient, _api_key: str) -> None:
     resp = client.post(
         "/api/v1/nfra/equity/crawl",
-        json={"pages": 0},
+        json={"start_page": 5, "end_page": 3},
         headers={"X-API-Key": _api_key},
     )
     assert resp.status_code == 400
