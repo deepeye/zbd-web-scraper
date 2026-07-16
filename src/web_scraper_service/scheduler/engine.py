@@ -66,8 +66,8 @@ def clean_task(self: Any, job_id: str, spider_name: str) -> dict[str, Any]:
         raise self.retry(exc=exc)
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
-def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
+@celery_app.task(bind=True, max_retries=0)
+def nfra_crawl_task(self: Any, item_id: int, start_page: int, end_page: int) -> dict[str, Any]:
     """Run the nfra crawler in a subprocess (isolated event loop per crawl).
 
     Uses subprocess to avoid asyncio loop-binding issues with module-level
@@ -85,16 +85,20 @@ def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
         sys.executable,
         str(repo_root / "scripts" / "crawl_nfra.py"),
         "--item-id", str(item_id),
-        "--pages", str(pages),
+        "--start-page", str(start_page),
+        "--end-page", str(end_page),
         "--json-out",
     ]
+    pages_count = end_page - start_page + 1
+    # 实测 18 页 ~1h → 约 200s/页, 加 10% 余量
+    timeout = max(1800, pages_count * 220)
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             cwd=str(repo_root),
-            timeout=3600,
+            timeout=timeout,
         )
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-2000:]
@@ -109,15 +113,15 @@ def nfra_crawl_task(self: Any, item_id: int, pages: int) -> dict[str, Any]:
                     break
                 except json.JSONDecodeError:
                     continue
-        logger.info("nfra crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
+        logger.info("nfra crawl done: item_id={} start_page={} end_page={} stats={}", item_id, start_page, end_page, stats)
         return stats
     except Exception as exc:
-        logger.error("nfra crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        logger.error("nfra crawl task failed: item_id={} start_page={} end_page={} err={}", item_id, start_page, end_page, exc)
         raise self.retry(exc=exc)
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
-def nfra_capital_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[str, Any]:
+@celery_app.task(bind=True, max_retries=0)
+def nfra_capital_crawl_task(self: Any, item_id: int | None, start_page: int, end_page: int) -> dict[str, Any]:
     """Run the nfra capital-change crawler in a subprocess (isolated event loop).
 
     Subprocess runs scripts/crawl_nfra_capital.py --json-out; the last stdout line
@@ -132,19 +136,22 @@ def nfra_capital_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[
     cmd = [
         sys.executable,
         str(repo_root / "scripts" / "crawl_nfra_capital.py"),
-        "--pages",
-        str(pages),
+        "--start-page", str(start_page),
+        "--end-page", str(end_page),
         "--json-out",
     ]
     if item_id is not None:
         cmd.extend(["--item-id", str(item_id)])
+    pages_count = end_page - start_page + 1
+    # 实测 18 页 ~1h → 约 200s/页, 加 10% 余量；item_id=None 时跑 2 个 item 翻倍
+    timeout = max(1800, pages_count * 220) * (1 if item_id is not None else 2)
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             cwd=str(repo_root),
-            timeout=3600,
+            timeout=timeout,
         )
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-2000:]
@@ -158,15 +165,15 @@ def nfra_capital_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[
                     break
                 except json.JSONDecodeError:
                     continue
-        logger.info("nfra capital crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
+        logger.info("nfra capital crawl done: item_id={} start_page={} end_page={} stats={}", item_id, start_page, end_page, stats)
         return stats
     except Exception as exc:
-        logger.error("nfra capital crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        logger.error("nfra capital crawl task failed: item_id={} start_page={} end_page={} err={}", item_id, start_page, end_page, exc)
         raise self.retry(exc=exc)
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
-def nfra_equity_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[str, Any]:
+@celery_app.task(bind=True, max_retries=0)
+def nfra_equity_crawl_task(self: Any, item_id: int | None, start_page: int, end_page: int) -> dict[str, Any]:
     """Run the nfra equity-change crawler in a subprocess (isolated event loop).
 
     Subprocess runs scripts/crawl_nfra_equity.py --json-out; the last stdout line
@@ -181,19 +188,22 @@ def nfra_equity_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[s
     cmd = [
         sys.executable,
         str(repo_root / "scripts" / "crawl_nfra_equity.py"),
-        "--pages",
-        str(pages),
+        "--start-page", str(start_page),
+        "--end-page", str(end_page),
         "--json-out",
     ]
     if item_id is not None:
         cmd.extend(["--item-id", str(item_id)])
+    pages_count = end_page - start_page + 1
+    # 实测 18 页 ~1h → 约 200s/页, 加 10% 余量；item_id=None 时跑 2 个 item 翻倍
+    timeout = max(1800, pages_count * 220) * (1 if item_id is not None else 2)
     try:
         proc = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             cwd=str(repo_root),
-            timeout=3600,
+            timeout=timeout,
         )
         if proc.returncode != 0:
             tail = (proc.stderr or proc.stdout or "")[-2000:]
@@ -207,10 +217,10 @@ def nfra_equity_crawl_task(self: Any, item_id: int | None, pages: int) -> dict[s
                     break
                 except json.JSONDecodeError:
                     continue
-        logger.info("nfra equity crawl done: item_id={} pages={} stats={}", item_id, pages, stats)
+        logger.info("nfra equity crawl done: item_id={} start_page={} end_page={} stats={}", item_id, start_page, end_page, stats)
         return stats
     except Exception as exc:
-        logger.error("nfra equity crawl task failed: item_id={} pages={} err={}", item_id, pages, exc)
+        logger.error("nfra equity crawl task failed: item_id={} start_page={} end_page={} err={}", item_id, start_page, end_page, exc)
         raise self.retry(exc=exc)
 
 
@@ -315,18 +325,19 @@ async def init_nfra_schedule() -> None:
     trigger = CronTrigger.from_crontab(
         settings.nfra_schedule_cron, timezone="Asia/Shanghai"
     )
-    pages = settings.nfra_schedule_pages
+    start_page = settings.nfra_schedule_start_page
+    end_page = settings.nfra_schedule_end_page
 
     def _run_nfra() -> None:
         for iid in (4110, 4291):
-            nfra_crawl_task.delay(iid, pages)
-            logger.info("Dispatched nfra crawl: item_id={} pages={}", iid, pages)
+            nfra_crawl_task.delay(iid, start_page, end_page)
+            logger.info("Dispatched nfra crawl: item_id={} start_page={} end_page={}", iid, start_page, end_page)
         if settings.nfra_capital_schedule_enabled:
-            nfra_capital_crawl_task.delay(None, pages)
-            logger.info("Dispatched nfra capital crawl: item_id=None pages={}", pages)
+            nfra_capital_crawl_task.delay(None, start_page, end_page)
+            logger.info("Dispatched nfra capital crawl: item_id=None start_page={} end_page={}", start_page, end_page)
         if settings.nfra_equity_schedule_enabled:
-            nfra_equity_crawl_task.delay(None, pages)
-            logger.info("Dispatched nfra equity crawl: item_id=None pages={}", pages)
+            nfra_equity_crawl_task.delay(None, start_page, end_page)
+            logger.info("Dispatched nfra equity crawl: item_id=None start_page={} end_page={}", start_page, end_page)
 
     _scheduler.add_job(
         _run_nfra,
@@ -336,9 +347,10 @@ async def init_nfra_schedule() -> None:
         replace_existing=True,
     )
     logger.info(
-        "Scheduled nfra daily crawl: cron='{}' pages={}",
+        "Scheduled nfra daily crawl: cron='{}' start_page={} end_page={}",
         settings.nfra_schedule_cron,
-        pages,
+        start_page,
+        end_page,
     )
 
 
