@@ -1,8 +1,8 @@
 """nfra.gov.cn 注册资本/开业数据采集 CLI 入口。
 
 用法:
-    python scripts/crawl_nfra_capital.py --pages 5
-    python scripts/crawl_nfra_capital.py --item-id 4291 --pages 3
+    python scripts/crawl_nfra_capital.py --start-page 1 --end-page 5
+    python scripts/crawl_nfra_capital.py --item-id 4291 --start-page 1 --end-page 3
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ from web_scraper_service.crawlers.nfra_capital import run_crawl
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="采集 nfra.gov.cn 注册资本/开业批复数据")
-    parser.add_argument("--pages", type=int, default=5, help="采集最新页数（默认 5）")
+    parser.add_argument("--start-page", type=int, default=1, help="起始页码（默认 1）")
+    parser.add_argument("--end-page", type=int, default=5, help="结束页码（默认 5）")
     parser.add_argument("--item-id", type=int, default=None, help="栏目 itemId；不传则采集 4110 和 4291")
     parser.add_argument("--concurrency", type=int, default=2, help="详情并发数（默认 2，浏览器+LLM）")
     parser.add_argument("--download-delay", type=float, default=1.0, help="详情请求间隔秒（默认 1.0）")
@@ -36,13 +37,14 @@ def main() -> int:
     args = parse_args()
     setup_logging()
     logger.info(
-        "启动 nfra 注册资本/开业采集: itemId={} pages={} concurrency={}",
-        args.item_id, args.pages, args.concurrency,
+        "启动 nfra 注册资本/开业采集: itemId={} start_page={} end_page={} concurrency={}",
+        args.item_id, args.start_page, args.end_page, args.concurrency,
     )
     stats = asyncio.run(
         run_crawl(
             item_id=args.item_id,
-            pages=args.pages,
+            start_page=args.start_page,
+            end_page=args.end_page,
             concurrency=args.concurrency,
             download_delay=args.download_delay,
         )
