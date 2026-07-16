@@ -2,7 +2,7 @@
 
 Fetches a batch of proxies from a remote HTTP API, caches them to a local
 JSON file (with deadline), and rotates through them.  When all proxies are
-exhausted or the deadline has passed, waits 5 minutes then re-fetches.
+exhausted or the deadline has passed, waits 1 second then re-fetches.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from loguru import logger
 from web_scraper_service.config import BASE_DIR, settings
 
 _CACHE_FILE = BASE_DIR / "proxy_cache.json"
-_REFRESH_COOLDOWN = 300  # 5 minutes
+_REFRESH_COOLDOWN = 1  # 1 second
 
 
 class DynamicProxyPool:
@@ -38,7 +38,7 @@ class DynamicProxyPool:
         """Fetch proxies from the configured URL. Returns (servers, deadline).
 
         On a 400 Bad Request (typical qg.net rate-limit response) the fetch
-        loops with a 5-minute backoff until it succeeds.
+        loops with a 1-second backoff until it succeeds.
         """
         url = settings.proxy_pool_url
         if not url:
@@ -158,7 +158,7 @@ class DynamicProxyPool:
         return len(self._proxies) > 0 and len(self._failed) >= len(self._proxies)
 
     async def wait_and_refresh(self) -> None:
-        """Wait 5 minutes then re-fetch all proxies from the API."""
+        """Wait 1 second then re-fetch all proxies from the API."""
         async with self._refreshing:
             # Double-check: another page error may have already refreshed
             if not self.is_exhausted():
