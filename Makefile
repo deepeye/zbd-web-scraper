@@ -47,13 +47,25 @@ seed:
 	uv run python scripts/seed_spiders.py
 
 crawl-nfra:
-	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id $(or ${NFRA_ITEM_ID},4110)
+	uv run python scripts/crawl_nfra.py \
+		--start-page $(or ${NFRA_START_PAGE},1) \
+		--end-page $(or ${NFRA_END_PAGE},5) \
+		--item-id $(or ${NFRA_ITEM_ID},4110)
 
 crawl-nfra-4291:
-	uv run python scripts/crawl_nfra.py --pages $(or ${NFRA_PAGES},5) --item-id 4291
+	uv run python scripts/crawl_nfra.py \
+		--start-page $(or ${NFRA_START_PAGE},1) \
+		--end-page $(or ${NFRA_END_PAGE},5) \
+		--item-id 4291
 
 crawl-nfra-capital:
-	uv run python scripts/crawl_nfra_capital.py --pages $(or ${NFRA_PAGES},5) $(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)
+	uv run python scripts/crawl_nfra_capital.py \
+		--start-page $(or ${NFRA_START_PAGE},1) \
+		--end-page $(or ${NFRA_END_PAGE},5) \
+		$(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)
 
 crawl-nfra-equity:
-	uv run python scripts/crawl_nfra_equity.py --pages $(or ${NFRA_PAGES},5) $(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)
+	uv run python scripts/crawl_nfra_equity.py \
+		--start-page $(or ${NFRA_START_PAGE},1) \
+		--end-page $(or ${NFRA_END_PAGE},5) \
+		$(if ${NFRA_ITEM_ID},--item-id ${NFRA_ITEM_ID},)
