@@ -157,13 +157,13 @@ ITEM_MODELS["my_spider"] = MyItem
 **nfra 采集：**（独立于 spider 注册表，写 `zbd_crawler_data` 独立库）
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/nfra/djg/crawl` | 任职资格：手动触发 `{item_id?, pages?}`（默认 4110/5），返回 `job_id` |
+| POST | `/api/v1/nfra/djg/crawl` | 任职资格：手动触发 `{item_id?, start_page?, end_page?}`（默认 4110/1-5），返回 `job_id` |
 | GET | `/api/v1/nfra/djg/crawl/{job_id}` | 轮询 Celery 任务状态 |
 | GET | `/api/v1/nfra/djg/data` | 按 `crawl_time` 范围分页查询 `djg_data` |
-| POST | `/api/v1/nfra/capital/crawl` | 注册资本/开业：手动触发 `{item_id?, pages?}`（item_id 省略→4110+4291） |
+| POST | `/api/v1/nfra/capital/crawl` | 注册资本/开业：手动触发 `{item_id?, start_page?, end_page?}`（item_id 省略→4110+4291） |
 | GET | `/api/v1/nfra/capital/crawl/{job_id}` | 轮询任务状态 |
 | GET | `/api/v1/nfra/capital/data` | 分页查询 `capital_change_data` |
-| POST | `/api/v1/nfra/equity/crawl` | 股权变更/开业股东：手动触发 `{item_id?, pages?}`（item_id 省略→4110+4291） |
+| POST | `/api/v1/nfra/equity/crawl` | 股权变更/开业股东：手动触发 `{item_id?, start_page?, end_page?}`（item_id 省略→4110+4291） |
 | GET | `/api/v1/nfra/equity/crawl/{job_id}` | 轮询任务状态 |
 | GET | `/api/v1/nfra/equity/data` | 分页查询 `equity_change_data` |
 
@@ -175,7 +175,7 @@ ITEM_MODELS["my_spider"] = MyItem
 - **APScheduler**（in-process，AsyncIOScheduler）：从 DB 加载 spider cron + 注册 nfra 每日定时
 - **Celery**（分布式）：`crawl_task` 执行 BaseSpider 爬虫；`nfra_crawl_task` 执行 nfra 采集（`run_crawl`）；`clean_task` 后处理
 
-**nfra 定时**：`init_nfra_schedule()` 在 lifespan 启动时注册 cron `0 8 * * *`（Asia/Shanghai），每日 8 点派发 `nfra_crawl_task.delay(4110, pages)` 与 `(4291, pages)`；`NFRA_CAPITAL_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_capital_crawl_task.delay(None, pages)`，`NFRA_EQUITY_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_equity_crawl_task.delay(None, pages)`（均采集 4110+4291）。`NFRA_SCHEDULE_ENABLED=false` 关闭整个 nfra 定时（含 capital/equity）；`NFRA_CAPITAL_SCHEDULE_ENABLED`/`NFRA_EQUITY_SCHEDULE_ENABLED` 单独控制各类。手动 `POST /api/v1/nfra/djg/crawl` 用 `apply_async(task_id=job_id)` 派发，`GET /crawl/{job_id}` 经 `AsyncResult` 查状态。
+**nfra 定时**：`init_nfra_schedule()` 在 lifespan 启动时注册 cron `0 8 * * *`（Asia/Shanghai），每日 8 点派发 `nfra_crawl_task.delay(4110, start_page, end_page)` 与 `(4291, start_page, end_page)`；`NFRA_CAPITAL_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_capital_crawl_task.delay(None, start_page, end_page)`，`NFRA_EQUITY_SCHEDULE_ENABLED=true`（默认）时一并派发 `nfra_equity_crawl_task.delay(None, start_page, end_page)`（均采集 4110+4291）。`NFRA_SCHEDULE_ENABLED=false` 关闭整个 nfra 定时（含 capital/equity）；`NFRA_CAPITAL_SCHEDULE_ENABLED`/`NFRA_EQUITY_SCHEDULE_ENABLED` 单独控制各类。手动 `POST /api/v1/nfra/djg/crawl` 用 `apply_async(task_id=job_id)` 派发，`GET /crawl/{job_id}` 经 `AsyncResult` 查状态。
 
 调度状态变更流：
 ```
@@ -309,7 +309,7 @@ make crawl-nfra        # nfra 采集 itemId=4110（默认 5 页）
 make crawl-nfra-4291   # nfra 采集 itemId=4291
 make crawl-nfra-capital  # 注册资本/开业采集（默认 4110+4291）
 make crawl-nfra-equity   # 股权变更/开业股东采集（默认 4110+4291）
-# NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra   # 自定义
+# NFRA_ITEM_ID=4291 NFRA_START_PAGE=1 NFRA_END_PAGE=3 make crawl-nfra   # 自定义
 ```
 
 本地数据库（仅 PostgreSQL+Redis）：`docker compose -f docker-compose.dev.yml up -d`。完整接口说明见 `docs/API.md`。

@@ -346,7 +346,8 @@ nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（
 | 字段 | 类型 | 默认 | 约束 | 说明 |
 |------|------|------|------|------|
 | `item_id` | int | 4110 | ≥ 1 | 栏目 itemId（4110=总局机关，4291=第二入口） |
-| `pages` | int | 5 | ≥ 1 | 采集最新页数 |
+| `start_page` | int | 1 | ≥ 1 | 采集起始页 |
+| `end_page` | int | 5 | ≥ 1 | 采集结束页 |
 
 **成功响应**（200）
 
@@ -355,19 +356,19 @@ nfra 采集器独立于 spider 注册表，写入独立库 `zbd_crawler_data`（
   "code": 0, "message": "success",
   "data": {
     "job_id": "0e8eb68f-2898-44b6-ad67-2ccc443e7062",
-    "item_id": 4291, "pages": 1, "status": "pending"
+    "item_id": 4291, "start_page": 1, "end_page": 1, "status": "pending"
   }
 }
 ```
 
-**错误**：`400` `pages < 1` 或 `item_id < 1`；`401` 未认证。
+**错误**：`400` `end_page < start_page` 或 `item_id < 1`；`401` 未认证。
 
 **示例**
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/nfra/djg/crawl \
   -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-  -d '{"item_id": 4291, "pages": 1}'
+  -d '{"item_id": 4291, "start_page": 1, "end_page": 1}'
 ```
 
 ---
@@ -464,11 +465,12 @@ curl "http://localhost:8000/api/v1/nfra/djg/data?start_date=2026-06-25T00:00:00&
 | 字段 | 类型 | 默认 | 约束 | 说明 |
 |------|------|------|------|------|
 | `item_id` | int \| null | null | ≥ 1 或 null | 栏目 itemId；null → 4110+4291 |
-| `pages` | int | 5 | ≥ 1 | 采集最新页数 |
+| `start_page` | int | 1 | ≥ 1 | 采集起始页 |
+| `end_page` | int | 5 | ≥ 1 | 采集结束页 |
 
-**响应**：`{"data": {"job_id": "<uuid>", "item_id": null, "pages": 5, "status": "pending"}}`
+**响应**：`{"data": {"job_id": "<uuid>", "item_id": null, "start_page": 1, "end_page": 5, "status": "pending"}}`
 
-**错误**：`400` `pages < 1` 或 `item_id < 1`；`401` 未认证。
+**错误**：`400` `end_page < start_page` 或 `item_id < 1`；`401` 未认证。
 
 **查询状态** `GET /api/v1/nfra/capital/crawl/{job_id}` — 状态映射同 7.2。`result`（仅 SUCCESS）字段：
 
@@ -511,7 +513,7 @@ curl "http://localhost:8000/api/v1/nfra/djg/data?start_date=2026-06-25T00:00:00&
 
 采集 nfra「股权变更」批复与「总公司开业」批复中的股东信息，写入独立库 `zbd_crawler_data.equity_change_data`。结构与 7.4 一致；`item_id` 省略时同时采集 4110 和 4291。
 
-**手动触发** `POST /api/v1/nfra/equity/crawl`（鉴权：需）— 请求体同 7.4（`item_id`/`pages`）。
+**手动触发** `POST /api/v1/nfra/equity/crawl`（鉴权：需）— 请求体同 7.4（`item_id`/`start_page`/`end_page`）。
 
 **查询状态** `GET /api/v1/nfra/equity/crawl/{job_id}` — 状态映射同 7.2；`result` 字段同 7.4。
 

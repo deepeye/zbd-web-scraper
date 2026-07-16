@@ -48,8 +48,6 @@ class EquityCrawlRequest(BaseModel):
 
 @router.post("/djg/crawl")
 async def crawl(body: CrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.start_page < 1:
-        raise HTTPException(status_code=400, detail="start_page must be >= 1")
     if body.end_page < body.start_page:
         raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id < 1:
@@ -91,8 +89,6 @@ async def crawl_status(job_id: str, _: ApiKey) -> dict[str, Any]:
 
 @router.post("/capital/crawl")
 async def capital_crawl(body: CapitalCrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.start_page < 1:
-        raise HTTPException(status_code=400, detail="start_page must be >= 1")
     if body.end_page < body.start_page:
         raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id is not None and body.item_id < 1:
@@ -174,8 +170,6 @@ async def list_capital_data(
 
 @router.post("/equity/crawl")
 async def equity_crawl(body: EquityCrawlRequest, _: ApiKey) -> dict[str, Any]:
-    if body.start_page < 1:
-        raise HTTPException(status_code=400, detail="start_page must be >= 1")
     if body.end_page < body.start_page:
         raise HTTPException(status_code=400, detail="end_page must be >= start_page")
     if body.item_id is not None and body.item_id < 1:

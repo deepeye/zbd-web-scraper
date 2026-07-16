@@ -93,12 +93,12 @@ make crawl-nfra
 make crawl-nfra-4291
 
 # custom itemId / pages via env
-NFRA_ITEM_ID=4291 NFRA_PAGES=3 make crawl-nfra
+NFRA_ITEM_ID=4291 NFRA_START_PAGE=1 NFRA_END_PAGE=3 make crawl-nfra
 ```
 
 **Flow**: list discovery via browser (AsyncStealthySession — list API is JS-cookie-gated) → title filter ("任职资格") → skip already-stored doc_ids → open each detail HTML with DynamicFetcher → hybrid extraction (code selectors for meta + Bailian LLM `qwen3.5-35b-a3b` for person/position/institution/date) → write `djg_data` per-doc as each is extracted (crash-safe). Requires `DASHSCOPE_API_KEY` in `.env`.
 
-**Scheduling**: daily 8am (Asia/Shanghai) APScheduler auto-crawls both itemId 4110 + 4291, 5 pages each. Disable via `NFRA_SCHEDULE_ENABLED=false`. Manual trigger + status via API (see [nfra API](#nfra)).
+**Scheduling**: daily 8am (Asia/Shanghai) APScheduler auto-crawls both itemId 4110 + 4291, pages 1-5 each. Disable via `NFRA_SCHEDULE_ENABLED=false`. Manual trigger + status via API (see [nfra API](#nfra)).
 
 **Query**: `GET /api/v1/nfra/djg/data` returns `djg_data` by `crawl_time` range with pagination.
 
@@ -228,7 +228,7 @@ All endpoints require `X-API-Key` header.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/v1/nfra/djg/crawl` | Manual trigger: `{item_id?, pages?}` (defaults 4110/5), returns `job_id` |
+| POST | `/api/v1/nfra/djg/crawl` | Manual trigger: `{item_id?, start_page?, end_page?}` (defaults 4110/1-5), returns `job_id` |
 | GET | `/api/v1/nfra/djg/crawl/{job_id}` | Poll Celery job status (pending/running/success/failed) |
 | GET | `/api/v1/nfra/djg/data` | Query `djg_data` by `crawl_time` range, paginated |
 
@@ -269,7 +269,8 @@ Key settings:
 - `BAILIAN_MODEL=qwen3.5-35b-a3b` — LLM model for extraction
 - `NFRA_SCHEDULE_ENABLED=true` — daily 8am auto-crawl toggle
 - `NFRA_SCHEDULE_CRON=0 8 * * *` — nfra daily schedule (Asia/Shanghai)
-- `NFRA_SCHEDULE_PAGES=5` — pages per itemId in scheduled run
+- `NFRA_SCHEDULE_START_PAGE=1` — start page per itemId in scheduled run
+- `NFRA_SCHEDULE_END_PAGE=5` — end page per itemId in scheduled run
 
 ## License
 

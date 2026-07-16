@@ -47,17 +47,17 @@ docker compose logs -f scraper-api    # 看 "All services initialized" + "Schedu
   ```bash
   curl -X POST localhost:8000/api/v1/nfra/djg/crawl \
     -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-    -d '{"item_id": 4291, "pages": 1}'
+    -d '{"item_id": 4291, "start_page": 1, "end_page": 1}'
   # 轮询状态（替换 job_id）
   curl localhost:8000/api/v1/nfra/djg/crawl/<job_id> -H "X-API-Key: $API_KEY"
   # 注册资本/开业采集
   curl -X POST localhost:8000/api/v1/nfra/capital/crawl \
     -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-    -d '{"pages": 5}'
+    -d '{"start_page": 1, "end_page": 5}'
   # 股权变更采集
   curl -X POST localhost:8000/api/v1/nfra/equity/crawl \
     -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
-    -d '{"pages": 5}'
+    -d '{"start_page": 1, "end_page": 5}'
   ```
 - **定时**：每日 8 点（Asia/Shanghai）APScheduler 自动采集 4110 + 4291 各 5 页。`NFRA_SCHEDULE_ENABLED=false` 关闭。`NFRA_CAPITAL_SCHEDULE_ENABLED=false` / `NFRA_EQUITY_SCHEDULE_ENABLED=false` 可单独关闭各类采集。
 - **查询数据**：`GET /api/v1/nfra/djg/data?start_date=...&end_date=...`（见 `docs/API.md`）。
