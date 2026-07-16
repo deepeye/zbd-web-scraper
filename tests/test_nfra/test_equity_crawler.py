@@ -19,7 +19,7 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
         ],
     }
 
-    async def fake_discover(item_id, pages):
+    async def fake_discover(item_id, start_page, end_page):
         return rows_by_item[item_id], "115.226.144.16:15827"
 
     class FakeRepo:
@@ -61,14 +61,14 @@ async def test_run_crawl_uses_default_item_ids_and_title_filter(monkeypatch: pyt
     monkeypatch.setattr(nfra_equity, "extract_rows_llm", AsyncMock(return_value=[{"doc_id": 1}]))
 
     with patch.dict("sys.modules", {"scrapling.fetchers": MagicMock(AsyncDynamicSession=FakeBrowserSession, AsyncStealthySession=FakeBrowserSession)}):
-        stats = await nfra_equity.run_crawl(pages=1, download_delay=0)
+        stats = await nfra_equity.run_crawl(start_page=1, end_page=1, download_delay=0)
 
     assert stats == {"discovered": 3, "qualified": 2, "pending": 2, "extracted_rows": 2, "stored": 2}
 
 
 @pytest.mark.asyncio
 async def test_run_crawl_skips_existing_docs(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_discover(item_id, pages):
+    async def fake_discover(item_id, start_page, end_page):
         return [{"docId": 1, "docTitle": "关于A公司股权变更的批复"}], None
 
     class FakeRepo:
@@ -106,7 +106,7 @@ async def test_run_crawl_skips_existing_docs(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(nfra_equity, "extract_rows_llm", extract)
 
     with patch.dict("sys.modules", {"scrapling.fetchers": MagicMock(AsyncDynamicSession=FakeBrowserSession, AsyncStealthySession=FakeBrowserSession)}):
-        stats = await nfra_equity.run_crawl(item_id=4110, pages=1, download_delay=0)
+        stats = await nfra_equity.run_crawl(item_id=4110, start_page=1, end_page=1, download_delay=0)
 
     assert stats == {"discovered": 1, "qualified": 1, "pending": 0, "extracted_rows": 0, "stored": 0}
     extract.assert_not_awaited()
