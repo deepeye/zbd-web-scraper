@@ -136,13 +136,13 @@ async def list_capital_data(
     _: ApiKey = None,  # type: ignore[assignment]
     pagination: Pagination = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    rows = await repo.list_by_crawl_time(
+    rows = await repo.list_by_publish_date(
         start_date=start_date,
         end_date=end_date,
         limit=pagination.size,
         offset=pagination.offset,
     )
-    total = await repo.count_by_crawl_time(start_date=start_date, end_date=end_date)
+    total = await repo.count_by_publish_date(start_date=start_date, end_date=end_date)
     return ok(
         [
             {
@@ -217,13 +217,13 @@ async def list_equity_data(
     _: ApiKey = None,  # type: ignore[assignment]
     pagination: Pagination = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    rows = await repo.list_by_crawl_time(
+    rows = await repo.list_by_publish_date(
         start_date=start_date,
         end_date=end_date,
         limit=pagination.size,
         offset=pagination.offset,
     )
-    total = await repo.count_by_crawl_time(start_date=start_date, end_date=end_date)
+    total = await repo.count_by_publish_date(start_date=start_date, end_date=end_date)
     return ok(
         [
             {
@@ -261,13 +261,13 @@ async def list_data(
     _: ApiKey = None,  # type: ignore[assignment]
     pagination: Pagination = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    rows = await repo.list_by_crawl_time(
+    rows = await repo.list_by_publish_date(
         start_date=start_date,
         end_date=end_date,
         limit=pagination.size,
         offset=pagination.offset,
     )
-    total = await repo.count_by_crawl_time(start_date=start_date, end_date=end_date)
+    total = await repo.count_by_publish_date(start_date=start_date, end_date=end_date)
     return ok(
         [
             {
