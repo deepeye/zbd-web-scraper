@@ -50,9 +50,6 @@ async def init_capital_change_table() -> None:
     async with snapshot_engine.begin() as conn:
         await conn.run_sync(_CapitalChangeBase.metadata.create_all)
         await conn.execute(
-            text("ALTER TABLE capital_change_data ADD COLUMN IF NOT EXISTS publish_date DATE")
-        )
-        await conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS idx_capital_change_data_publish_date "
                 "ON capital_change_data (publish_date DESC NULLS LAST)"
