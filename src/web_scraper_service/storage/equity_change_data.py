@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, DateTime, Text, UniqueConstraint, func, select
+from sqlalchemy import BigInteger, Date, DateTime, Text, UniqueConstraint, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -54,6 +54,12 @@ class EquityChangeData(_EquityChangeBase):
 async def init_equity_change_table() -> None:
     async with snapshot_engine.begin() as conn:
         await conn.run_sync(_EquityChangeBase.metadata.create_all)
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_equity_change_data_publish_date "
+                "ON equity_change_data (publish_date DESC NULLS LAST)"
+            )
+        )
 
 
 class EquityChangeDataRepo:
@@ -69,36 +75,40 @@ class EquityChangeDataRepo:
         result = await self.session.execute(stmt)
         return {row[0] for row in result.all()}
 
-    async def list_by_crawl_time(
+    async def list_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[EquityChangeData]:
+        """按 publish_date 范围查询，最新发布在前，NULL 置后。"""
         stmt = select(EquityChangeData)
         if start_date is not None:
-            stmt = stmt.where(EquityChangeData.crawl_time >= start_date)
+            stmt = stmt.where(EquityChangeData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(EquityChangeData.crawl_time <= end_date)
+            stmt = stmt.where(EquityChangeData.publish_date <= end_date)
         stmt = (
-            stmt.order_by(EquityChangeData.crawl_time.desc(), EquityChangeData.id.desc())
+            stmt.order_by(
+                EquityChangeData.publish_date.desc().nulls_last(), EquityChangeData.id.desc()
+            )
             .limit(limit)
             .offset(offset)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count_by_crawl_time(
+    async def count_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> int:
+        """按 publish_date 范围计数。"""
         stmt = select(func.count()).select_from(EquityChangeData)
         if start_date is not None:
-            stmt = stmt.where(EquityChangeData.crawl_time >= start_date)
+            stmt = stmt.where(EquityChangeData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(EquityChangeData.crawl_time <= end_date)
+            stmt = stmt.where(EquityChangeData.publish_date <= end_date)
         result = await self.session.execute(stmt)
         return int(result.scalar_one())
 
