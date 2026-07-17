@@ -45,6 +45,12 @@ async def init_djg_table() -> None:
     async with snapshot_engine.begin() as conn:
         await conn.run_sync(_DjgBase.metadata.create_all)
         await conn.execute(text("ALTER TABLE djg_data ADD COLUMN IF NOT EXISTS publish_date DATE"))
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_djg_data_publish_date "
+                "ON djg_data (publish_date DESC NULLS LAST)"
+            )
+        )
 
 
 class DjgDataRepo:
@@ -59,38 +65,38 @@ class DjgDataRepo:
         result = await self.session.execute(stmt)
         return {row[0] for row in result.all()}
 
-    async def list_by_crawl_time(
+    async def list_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[DjgData]:
-        """按 crawl_time 范围查询，最新采集在前。"""
+        """按 publish_date 范围查询，最新发布在前，NULL 置后。"""
         stmt = select(DjgData)
         if start_date is not None:
-            stmt = stmt.where(DjgData.crawl_time >= start_date)
+            stmt = stmt.where(DjgData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(DjgData.crawl_time <= end_date)
+            stmt = stmt.where(DjgData.publish_date <= end_date)
         stmt = (
-            stmt.order_by(DjgData.crawl_time.desc(), DjgData.id.desc())
+            stmt.order_by(DjgData.publish_date.desc().nulls_last(), DjgData.id.desc())
             .limit(limit)
             .offset(offset)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count_by_crawl_time(
+    async def count_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> int:
-        """按 crawl_time 范围计数。"""
+        """按 publish_date 范围计数。"""
         stmt = select(func.count()).select_from(DjgData)
         if start_date is not None:
-            stmt = stmt.where(DjgData.crawl_time >= start_date)
+            stmt = stmt.where(DjgData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(DjgData.crawl_time <= end_date)
+            stmt = stmt.where(DjgData.publish_date <= end_date)
         result = await self.session.execute(stmt)
         return int(result.scalar_one())
 

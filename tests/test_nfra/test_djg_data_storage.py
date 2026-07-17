@@ -29,7 +29,10 @@ async def test_init_djg_table_adds_publish_date_column() -> None:
     with patch("web_scraper_service.storage.djg_data.snapshot_engine", mock_engine):
         await init_djg_table()
 
-    conn.execute.assert_awaited_once()
-    ddl = str(conn.execute.await_args.args[0])
-    assert "ALTER TABLE djg_data" in ddl
-    assert "ADD COLUMN IF NOT EXISTS publish_date DATE" in ddl
+    assert conn.execute.await_count == 2
+    ddl_statements = [str(call.args[0]) for call in conn.execute.await_args_list]
+    alter_ddl = next(s for s in ddl_statements if "ALTER TABLE djg_data" in s)
+    assert "ADD COLUMN IF NOT EXISTS publish_date DATE" in alter_ddl
+    index_ddl = next(s for s in ddl_statements if "CREATE INDEX" in s)
+    assert "idx_djg_data_publish_date" in index_ddl
+    assert "publish_date DESC NULLS LAST" in index_ddl
