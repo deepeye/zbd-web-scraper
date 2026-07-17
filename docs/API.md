@@ -414,7 +414,7 @@ curl -X POST http://localhost:8000/api/v1/nfra/djg/crawl \
 
 ### 7.3 查询采集数据 `GET /api/v1/nfra/djg/data`
 
-按采集时间范围查询 `djg_data` 表，翻页返回。
+按发布日期范围查询 `djg_data` 表，翻页返回。
 
 **鉴权**：需　**分页**：是
 
@@ -422,12 +422,12 @@ curl -X POST http://localhost:8000/api/v1/nfra/djg/crawl \
 
 | 参数 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `start_date` | datetime | null | `crawl_time >= start_date`（含） |
-| `end_date` | datetime | null | `crawl_time <= end_date`（含） |
+| `start_date` | datetime | null | `publish_date >= start_date`（含） |
+| `end_date` | datetime | null | `publish_date <= end_date`（含） |
 | `page` | int | 1 | 页码 |
 | `size` | int | 20 | 每页数（1–100） |
 
-排序：`crawl_time DESC, id DESC`（最新采集在前）。`start_date > end_date` 返回空（不报错）。
+排序：`publish_date DESC NULLS LAST, id DESC`（最新发布在前，未标注发布日期排最后）。`start_date > end_date` 返回空（不报错）。
 
 **响应 data**（数组，每行一人）：
 
@@ -482,7 +482,7 @@ curl "http://localhost:8000/api/v1/nfra/djg/data?start_date=2026-06-25T00:00:00&
 | `extracted_rows` | int | LLM 抽取行数 |
 | `stored` | int | 写入 capital_change_data 行数 |
 
-**查询数据** `GET /api/v1/nfra/capital/data`（鉴权：需　分页：是）— 查询参数同 7.3（`start_date`/`end_date`/`page`/`size`），排序 `crawl_time DESC, id DESC`。
+**查询数据** `GET /api/v1/nfra/capital/data`（鉴权：需　分页：是）— 查询参数同 7.3（`start_date`/`end_date`/`page`/`size`），排序 `publish_date DESC NULLS LAST, id DESC`（最新发布在前，`publish_date` 为空排最后）。
 
 **响应 data**（数组）：
 
@@ -517,7 +517,7 @@ curl "http://localhost:8000/api/v1/nfra/djg/data?start_date=2026-06-25T00:00:00&
 
 **查询状态** `GET /api/v1/nfra/equity/crawl/{job_id}` — 状态映射同 7.2；`result` 字段同 7.4。
 
-**查询数据** `GET /api/v1/nfra/equity/data`（鉴权：需　分页：是）— 查询参数同 7.3。
+**查询数据** `GET /api/v1/nfra/equity/data`（鉴权：需　分页：是）— 查询参数同 7.3，排序 `publish_date DESC NULLS LAST, id DESC`。
 
 **响应 data**（数组，每位股东一行）：
 
