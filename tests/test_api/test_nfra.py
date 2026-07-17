@@ -291,8 +291,8 @@ def test_get_data_with_date_range(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_row(id=1), _fake_row(id=2)])
-    repo.count_by_crawl_time = AsyncMock(return_value=2)
+    repo.list_by_publish_date = AsyncMock(return_value=[_fake_row(id=1), _fake_row(id=2)])
+    repo.count_by_publish_date = AsyncMock(return_value=2)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get(
@@ -318,16 +318,16 @@ def test_get_data_with_date_range(
     assert body["pagination"]["total"] == 2
     assert body["pagination"]["page"] == 1
     assert body["pagination"]["size"] == 20
-    repo.list_by_crawl_time.assert_awaited_once()
-    args, kwargs = repo.list_by_crawl_time.call_args
+    repo.list_by_publish_date.assert_awaited_once()
+    args, kwargs = repo.list_by_publish_date.call_args
     assert kwargs["limit"] == 20
     assert kwargs["offset"] == 0
 
 
 def test_get_data_publish_date_null(client: TestClient, _api_key: str) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_row(publish_date=None)])
-    repo.count_by_crawl_time = AsyncMock(return_value=1)
+    repo.list_by_publish_date = AsyncMock(return_value=[_fake_row(publish_date=None)])
+    repo.count_by_publish_date = AsyncMock(return_value=1)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get("/api/v1/nfra/djg/data", headers={"X-API-Key": _api_key})
@@ -339,8 +339,8 @@ def test_get_data_publish_date_null(client: TestClient, _api_key: str) -> None:
 
 def test_get_data_empty(client: TestClient, _api_key: str) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[])
-    repo.count_by_crawl_time = AsyncMock(return_value=0)
+    repo.list_by_publish_date = AsyncMock(return_value=[])
+    repo.count_by_publish_date = AsyncMock(return_value=0)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get("/api/v1/nfra/djg/data", headers={"X-API-Key": _api_key})
@@ -353,8 +353,8 @@ def test_get_data_empty(client: TestClient, _api_key: str) -> None:
 
 def test_get_data_pagination_offset(client: TestClient, _api_key: str) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_row(id=21)])
-    repo.count_by_crawl_time = AsyncMock(return_value=40)
+    repo.list_by_publish_date = AsyncMock(return_value=[_fake_row(id=21)])
+    repo.count_by_publish_date = AsyncMock(return_value=40)
     client.app.dependency_overrides[get_djg_data_repo] = lambda: repo
     try:
         resp = client.get(
@@ -365,7 +365,7 @@ def test_get_data_pagination_offset(client: TestClient, _api_key: str) -> None:
     finally:
         client.app.dependency_overrides.clear()
     assert resp.status_code == 200
-    _, kwargs = repo.list_by_crawl_time.call_args
+    _, kwargs = repo.list_by_publish_date.call_args
     assert kwargs["offset"] == 20  # (page2-1)*size20
 
 
@@ -479,8 +479,8 @@ def test_get_capital_status_success(client: TestClient, _api_key: str) -> None:
 
 def test_get_capital_data(client: TestClient, _api_key: str) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_capital_row()])
-    repo.count_by_crawl_time = AsyncMock(return_value=1)
+    repo.list_by_publish_date = AsyncMock(return_value=[_fake_capital_row()])
+    repo.count_by_publish_date = AsyncMock(return_value=1)
     client.app.dependency_overrides[get_capital_change_data_repo] = lambda: repo
     try:
         resp = client.get(
@@ -613,8 +613,8 @@ def test_get_equity_status_success(client: TestClient, _api_key: str) -> None:
 
 def test_get_equity_data(client: TestClient, _api_key: str) -> None:
     repo = MagicMock()
-    repo.list_by_crawl_time = AsyncMock(return_value=[_fake_equity_row()])
-    repo.count_by_crawl_time = AsyncMock(return_value=1)
+    repo.list_by_publish_date = AsyncMock(return_value=[_fake_equity_row()])
+    repo.count_by_publish_date = AsyncMock(return_value=1)
     client.app.dependency_overrides[get_equity_change_data_repo] = lambda: repo
     try:
         resp = client.get(
