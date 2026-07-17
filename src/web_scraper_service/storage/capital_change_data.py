@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, DateTime, Text, UniqueConstraint, func, select
+from sqlalchemy import BigInteger, Date, DateTime, Text, UniqueConstraint, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -49,6 +49,15 @@ class CapitalChangeData(_CapitalChangeBase):
 async def init_capital_change_table() -> None:
     async with snapshot_engine.begin() as conn:
         await conn.run_sync(_CapitalChangeBase.metadata.create_all)
+        await conn.execute(
+            text("ALTER TABLE capital_change_data ADD COLUMN IF NOT EXISTS publish_date DATE")
+        )
+        await conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_capital_change_data_publish_date "
+                "ON capital_change_data (publish_date DESC NULLS LAST)"
+            )
+        )
 
 
 class CapitalChangeDataRepo:
@@ -58,42 +67,46 @@ class CapitalChangeDataRepo:
     async def existing_doc_ids(self, doc_ids: set[int]) -> set[int]:
         if not doc_ids:
             return set()
-        stmt = select(CapitalChangeData.doc_id).where(
-            CapitalChangeData.doc_id.in_(doc_ids)
-        ).distinct()
+        stmt = (
+            select(CapitalChangeData.doc_id).where(CapitalChangeData.doc_id.in_(doc_ids)).distinct()
+        )
         result = await self.session.execute(stmt)
         return {row[0] for row in result.all()}
 
-    async def list_by_crawl_time(
+    async def list_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[CapitalChangeData]:
+        """按 publish_date 范围查询，最新发布在前，NULL 置后。"""
         stmt = select(CapitalChangeData)
         if start_date is not None:
-            stmt = stmt.where(CapitalChangeData.crawl_time >= start_date)
+            stmt = stmt.where(CapitalChangeData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(CapitalChangeData.crawl_time <= end_date)
+            stmt = stmt.where(CapitalChangeData.publish_date <= end_date)
         stmt = (
-            stmt.order_by(CapitalChangeData.crawl_time.desc(), CapitalChangeData.id.desc())
+            stmt.order_by(
+                CapitalChangeData.publish_date.desc().nulls_last(), CapitalChangeData.id.desc()
+            )
             .limit(limit)
             .offset(offset)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count_by_crawl_time(
+    async def count_by_publish_date(
         self,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> int:
+        """按 publish_date 范围计数。"""
         stmt = select(func.count()).select_from(CapitalChangeData)
         if start_date is not None:
-            stmt = stmt.where(CapitalChangeData.crawl_time >= start_date)
+            stmt = stmt.where(CapitalChangeData.publish_date >= start_date)
         if end_date is not None:
-            stmt = stmt.where(CapitalChangeData.crawl_time <= end_date)
+            stmt = stmt.where(CapitalChangeData.publish_date <= end_date)
         result = await self.session.execute(stmt)
         return int(result.scalar_one())
 
@@ -101,9 +114,7 @@ class CapitalChangeDataRepo:
         if not rows:
             return 0
         stmt = pg_insert(CapitalChangeData).values(rows)
-        stmt = stmt.on_conflict_do_nothing(
-            constraint="uq_capital_change_doc_institution_type"
-        )
+        stmt = stmt.on_conflict_do_nothing(constraint="uq_capital_change_doc_institution_type")
         result = await self.session.execute(stmt)
         await self.session.commit()
         return getattr(result, "rowcount", 0) or 0

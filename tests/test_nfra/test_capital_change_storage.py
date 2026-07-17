@@ -25,6 +25,7 @@ def test_capital_change_table_columns_and_unique_constraint() -> None:
 async def test_init_capital_change_table_creates_table() -> None:
     conn = MagicMock()
     conn.run_sync = AsyncMock()
+    conn.execute = AsyncMock()
     begin_context = AsyncMock()
     begin_context.__aenter__.return_value = conn
     begin_context.__aexit__.return_value = None
@@ -36,3 +37,10 @@ async def test_init_capital_change_table_creates_table() -> None:
         await init_capital_change_table()
 
     conn.run_sync.assert_awaited_once()
+    assert conn.execute.await_count == 2
+    ddl_statements = [str(call.args[0]) for call in conn.execute.await_args_list]
+    alter_ddl = next(s for s in ddl_statements if "ALTER TABLE capital_change_data" in s)
+    assert "ADD COLUMN IF NOT EXISTS publish_date DATE" in alter_ddl
+    index_ddl = next(s for s in ddl_statements if "CREATE INDEX" in s)
+    assert "idx_capital_change_data_publish_date" in index_ddl
+    assert "publish_date DESC NULLS LAST" in index_ddl
